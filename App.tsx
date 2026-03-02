@@ -3,6 +3,7 @@ import { View, Platform, Alert } from 'react-native';
 import { TaskProvider } from './src/context/TaskContext';
 import TaskListTab from './src/components/TaskListTab';
 import CalendarTab from './src/components/CalendarTab';
+import StatsTab from './src/components/StatsTab';
 import BottomNavigation from './src/components/BottomNavigation';
 import PullDownSearch from './src/components/PullDownSearch';
 import AIPlanningModal from './src/components/AIPlanningModal';
@@ -93,10 +94,12 @@ const App = () => {
               onOpenAIModal={() => setAiModalVisible(true)}
               pullUpPanResponder={pullUpPanResponder}
             />
-          ) : (
+          ) : activeTab === 'calendar' ? (
             <CalendarTab
               pullUpPanResponder={pullUpPanResponder}
             />
+          ) : (
+            <StatsTab />
           )}
         </View>
 

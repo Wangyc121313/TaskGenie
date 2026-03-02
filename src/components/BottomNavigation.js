@@ -28,6 +28,18 @@ const BottomNavigation = ({ activeTab, onTabChange }) => {
           日历视图
         </Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.bottomNavButton, activeTab === 'stats' && styles.activeBottomNavButton]}
+        onPress={() => onTabChange('stats')}
+      >
+        <Text style={[styles.bottomNavIcon, activeTab === 'stats' && styles.activeBottomNavIcon]}>
+          📊
+        </Text>
+        <Text style={[styles.bottomNavText, activeTab === 'stats' && styles.activeBottomNavText]}>
+          数据统计
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 };
