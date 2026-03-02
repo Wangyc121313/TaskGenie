@@ -10,7 +10,7 @@ export const TASK_TAGS = {
 };
 
 export const TAG_COLORS = {
-  '今日': '#3498db',
+  '今日': '#6366F1',
   '明日': '#2ecc71',
   '重要': '#e74c3c',
   '已完成': '#95a5a6',

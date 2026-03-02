@@ -306,20 +306,28 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     );
   };
 
+  const C = {
+    primary: '#6366F1', primaryLight: '#EEF2FF', primaryDark: '#4F46E5',
+    bg: '#F1F5F9', surface: '#FFFFFF', surface2: '#F8FAFF',
+    text1: '#0F172A', text2: '#475569', text3: '#94A3B8',
+    border: '#E2E8F0', danger: '#EF4444', warning: '#F59E0B',
+    accent: '#10B981', shadow: '#64748B',
+  };
+
   const styles = {
     calendarContainer: {
       flex: 1,
-      padding: 15,
+      padding: 16,
     },
     calendar: {
-      backgroundColor: '#fff',
-      borderRadius: 15,
+      backgroundColor: C.surface,
+      borderRadius: 18,
       padding: 20,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 5,
-      elevation: 3,
+      shadowColor: C.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.10,
+      shadowRadius: 12,
+      elevation: 4,
     },
     calendarHeader: {
       flexDirection: 'row',
@@ -329,13 +337,13 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     },
     calendarNav: {
       fontSize: 22,
-      color: '#3498db',
+      color: C.primary,
       paddingHorizontal: 15,
     },
     calendarTitle: {
       fontSize: 18,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontWeight: '700',
+      color: C.text1,
     },
     weekDays: {
       flexDirection: 'row',
@@ -345,7 +353,7 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       flex: 1,
       textAlign: 'center',
       fontSize: 13,
-      color: '#7f8c8d',
+      color: C.text3,
       fontWeight: '600',
     },
     week: {
@@ -357,21 +365,21 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       alignItems: 'center',
       justifyContent: 'center',
       margin: 1,
-      borderRadius: 8,
+      borderRadius: 10,
     },
     today: {
       borderWidth: 2,
-      borderColor: '#3498db',
+      borderColor: C.primary,
     },
     selectedDay: {
-      backgroundColor: '#3498db',
+      backgroundColor: C.primary,
     },
     dayText: {
       fontSize: 15,
-      color: '#2c3e50',
+      color: C.text1,
     },
     todayText: {
-      color: '#3498db',
+      color: C.primary,
       fontWeight: 'bold',
     },
     taskDots: {
@@ -383,25 +391,25 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       height: 4,
       borderRadius: 2,
       marginHorizontal: 1,
-      backgroundColor: '#e74c3c',
+      backgroundColor: C.danger,
     },
     scheduledDot: {
       width: 4,
       height: 4,
       borderRadius: 2,
       marginHorizontal: 1,
-      backgroundColor: '#3498db',
+      backgroundColor: C.primary,
     },
     selectedDateContainer: {
-      backgroundColor: '#fff',
-      borderRadius: 15,
+      backgroundColor: C.surface,
+      borderRadius: 18,
       padding: 20,
-      marginTop: 20,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 5,
-      elevation: 3,
+      marginTop: 16,
+      shadowColor: C.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.10,
+      shadowRadius: 12,
+      elevation: 4,
     },
     selectedDateHeader: {
       flexDirection: 'row',
@@ -410,9 +418,9 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       marginBottom: 20,
     },
     selectedDateTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontSize: 17,
+      fontWeight: '700',
+      color: C.text1,
       flex: 1,
     },
     buttonContainer: {
@@ -420,8 +428,8 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       alignItems: 'center',
     },
     aiScheduleButton: {
-      backgroundColor: '#9b59b6',
-      paddingHorizontal: 15,
+      backgroundColor: C.primary,
+      paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 20,
       marginLeft: 10,
@@ -429,13 +437,13 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     aiScheduleButtonText: {
       color: '#fff',
       fontSize: 13,
-      fontWeight: 'bold',
+      fontWeight: '700',
     },
     regenerateButton: {
-      backgroundColor: '#f39c12',
+      backgroundColor: C.warning,
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 15,
+      borderRadius: 14,
       marginLeft: 8,
     },
     regenerateButtonText: {
@@ -444,10 +452,10 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       fontWeight: 'bold',
     },
     deleteButton: {
-      backgroundColor: '#e74c3c',
+      backgroundColor: C.danger,
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 15,
+      borderRadius: 14,
       marginLeft: 8,
     },
     deleteButtonText: {
@@ -456,26 +464,26 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       fontWeight: 'bold',
     },
     warningBanner: {
-      backgroundColor: '#fff3cd',
+      backgroundColor: '#FEF9C3',
       padding: 12,
-      borderRadius: 8,
+      borderRadius: 10,
       marginBottom: 15,
       borderLeftWidth: 4,
-      borderLeftColor: '#ffc107',
+      borderLeftColor: C.warning,
     },
     warningText: {
-      color: '#856404',
+      color: '#92400E',
       fontSize: 14,
       fontWeight: '500',
     },
     // AI安排显示样式
     aiScheduleContainer: {
-      backgroundColor: '#f8f9fa',
-      borderRadius: 12,
+      backgroundColor: C.primaryLight,
+      borderRadius: 14,
       padding: 15,
       marginBottom: 20,
       borderLeftWidth: 4,
-      borderLeftColor: '#9b59b6',
+      borderLeftColor: C.primary,
     },
     aiScheduleHeader: {
       flexDirection: 'row',
@@ -485,26 +493,26 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     },
     aiScheduleTitle: {
       fontSize: 16,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontWeight: '700',
+      color: C.text1,
     },
     efficiencyBadge: {
-      backgroundColor: '#e8f5e8',
+      backgroundColor: '#D1FAE5',
       paddingHorizontal: 8,
       paddingVertical: 4,
       borderRadius: 12,
     },
     efficiencyText: {
-      color: '#27ae60',
+      color: '#065F46',
       fontSize: 11,
       fontWeight: 'bold',
     },
     scheduleMetrics: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      backgroundColor: '#fff',
+      backgroundColor: C.surface,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: 10,
       marginBottom: 15,
     },
     metricItem: {
@@ -513,17 +521,17 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     metricValue: {
       fontSize: 16,
       fontWeight: 'bold',
-      color: '#3498db',
+      color: C.primary,
     },
     metricLabel: {
       fontSize: 11,
-      color: '#7f8c8d',
+      color: C.text3,
       marginTop: 2,
     },
     scheduleItem: {
-      backgroundColor: '#fff',
+      backgroundColor: C.surface,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: 10,
       marginBottom: 8,
       borderLeftWidth: 3,
     },
@@ -536,33 +544,33 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     timeText: {
       fontSize: 14,
       fontWeight: 'bold',
-      color: '#2c3e50',
+      color: C.text1,
     },
     durationText: {
       fontSize: 11,
-      color: '#7f8c8d',
+      color: C.text3,
     },
     scheduleTaskName: {
       fontSize: 14,
       fontWeight: '600',
-      color: '#2c3e50',
+      color: C.text1,
       marginBottom: 4,
     },
     scheduleReason: {
       fontSize: 12,
-      color: '#7f8c8d',
+      color: C.text2,
       fontStyle: 'italic',
     },
     suggestionsContainer: {
-      backgroundColor: '#e8f4fd',
+      backgroundColor: C.primaryLight,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: 10,
       marginTop: 10,
     },
     suggestionsTitle: {
       fontSize: 14,
       fontWeight: 'bold',
-      color: '#2c3e50',
+      color: C.text1,
       marginBottom: 8,
     },
     suggestionItem: {
@@ -571,7 +579,7 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       marginBottom: 6,
     },
     suggestionBullet: {
-      color: '#3498db',
+      color: C.primary,
       fontSize: 14,
       marginRight: 6,
       marginTop: 1,
@@ -579,25 +587,27 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     suggestionText: {
       flex: 1,
       fontSize: 12,
-      color: '#34495e',
+      color: C.text2,
       lineHeight: 16,
     },
     taskSection: {
       marginBottom: 20,
     },
     taskSectionTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: '#34495e',
+      fontSize: 15,
+      fontWeight: '700',
+      color: C.text2,
       marginBottom: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     taskItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 15,
+      padding: 14,
       marginBottom: 10,
-      backgroundColor: '#f8f9fa',
-      borderRadius: 10,
+      backgroundColor: C.surface2,
+      borderRadius: 14,
     },
     taskPriority: {
       width: 4,
@@ -616,9 +626,9 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       marginBottom: 4,
     },
     taskItemName: {
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: '600',
-      color: '#2c3e50',
+      color: C.text1,
       flex: 1,
     },
     taskTagBadge: {
@@ -633,14 +643,14 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       fontWeight: 'bold',
     },
     taskItemDescription: {
-      fontSize: 14,
-      color: '#7f8c8d',
-      lineHeight: 20,
+      fontSize: 13,
+      color: C.text2,
+      lineHeight: 19,
       marginBottom: 4,
     },
     taskItemTime: {
       fontSize: 12,
-      color: '#95a5a6',
+      color: C.text3,
     },
     noTasksContainer: {
       alignItems: 'center',
@@ -648,7 +658,7 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     },
     noTasksText: {
       fontSize: 16,
-      color: '#7f8c8d',
+      color: C.text3,
     },
     legendContainer: {
       flexDirection: 'row',
@@ -657,7 +667,7 @@ const CalendarTab = ({ pullUpPanResponder }) => {
       marginTop: 20,
       paddingTop: 20,
       borderTopWidth: 1,
-      borderTopColor: '#ecf0f1',
+      borderTopColor: C.border,
     },
     legendItem: {
       flexDirection: 'row',
@@ -667,11 +677,11 @@ const CalendarTab = ({ pullUpPanResponder }) => {
     legendText: {
       marginLeft: 5,
       fontSize: 13,
-      color: '#7f8c8d',
+      color: C.text2,
     },
     legendHint: {
       fontSize: 12,
-      color: '#95a5a6',
+      color: C.text3,
       marginLeft: 20,
     },
   };

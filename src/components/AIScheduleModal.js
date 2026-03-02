@@ -125,19 +125,27 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
     return `${h}小时${m}分钟`;
   };
 
+  const C = {
+    primary: '#6366F1', primaryLight: '#EEF2FF',
+    surface: '#FFFFFF', surface2: '#F8FAFF',
+    text1: '#0F172A', text2: '#475569', text3: '#94A3B8',
+    border: '#E2E8F0', shadow: '#64748B',
+    accent: '#10B981', warning: '#F59E0B',
+  };
+
   const styles = {
     modalOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
+      backgroundColor: 'rgba(15, 23, 42, 0.6)',
+      justifyContent: 'flex-end',
     },
     modalContent: {
-      backgroundColor: '#fff',
-      borderRadius: 15,
-      padding: 20,
-      width: '95%',
-      maxHeight: screenHeight * 0.9,
+      backgroundColor: C.surface,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      padding: 24,
+      width: '100%',
+      maxHeight: screenHeight * 0.92,
     },
     header: {
       flexDirection: 'row',
@@ -147,70 +155,75 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
     },
     title: {
       fontSize: 20,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontWeight: '700',
+      color: C.text1,
     },
     closeButton: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: '#ecf0f1',
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: C.surface2,
       justifyContent: 'center',
       alignItems: 'center',
     },
     closeButtonText: {
       fontSize: 16,
-      color: '#7f8c8d',
+      color: C.text2,
       fontWeight: 'bold',
     },
     dateHeader: {
-      backgroundColor: '#f8f9fa',
-      padding: 15,
-      borderRadius: 10,
+      backgroundColor: C.primaryLight,
+      padding: 16,
+      borderRadius: 14,
       marginBottom: 20,
     },
     dateText: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontSize: 17,
+      fontWeight: '700',
+      color: C.primary,
       textAlign: 'center',
     },
     summaryContainer: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      marginTop: 10,
+      marginTop: 12,
     },
     summaryItem: {
       alignItems: 'center',
     },
     summaryNumber: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      color: '#3498db',
+      fontSize: 18,
+      fontWeight: '700',
+      color: C.primary,
     },
     summaryLabel: {
       fontSize: 12,
-      color: '#7f8c8d',
+      color: C.text3,
       marginTop: 2,
     },
     warningContainer: {
-      backgroundColor: '#fff3cd',
+      backgroundColor: '#FEF9C3',
       padding: 12,
-      borderRadius: 8,
+      borderRadius: 10,
       marginBottom: 15,
       borderLeftWidth: 4,
-      borderLeftColor: '#ffc107',
+      borderLeftColor: C.warning,
     },
     warningText: {
-      color: '#856404',
+      color: '#92400E',
       fontSize: 14,
     },
     startButton: {
-      backgroundColor: '#9b59b6',
+      backgroundColor: C.primary,
       paddingVertical: 15,
-      borderRadius: 10,
+      borderRadius: 14,
       alignItems: 'center',
       marginBottom: 20,
+      shadowColor: C.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 4,
     },
     startButtonContent: {
       flexDirection: 'row',
@@ -219,7 +232,7 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
     startButtonText: {
       color: '#fff',
       fontSize: 16,
-      fontWeight: 'bold',
+      fontWeight: '700',
       marginLeft: 8,
     },
     disabledButton: {
@@ -236,24 +249,24 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
     },
     scheduleTitle: {
       fontSize: 18,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontWeight: '700',
+      color: C.text1,
     },
     efficiencyBadge: {
-      backgroundColor: '#e8f5e8',
+      backgroundColor: '#D1FAE5',
       paddingHorizontal: 10,
       paddingVertical: 5,
       borderRadius: 15,
     },
     efficiencyText: {
-      color: '#27ae60',
+      color: '#065F46',
       fontSize: 12,
       fontWeight: 'bold',
     },
     scheduleItem: {
-      backgroundColor: '#f8f9fa',
-      padding: 15,
-      borderRadius: 10,
+      backgroundColor: C.surface2,
+      padding: 14,
+      borderRadius: 12,
       marginBottom: 10,
       borderLeftWidth: 4,
     },
@@ -264,18 +277,18 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
       marginBottom: 8,
     },
     timeText: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontSize: 15,
+      fontWeight: '700',
+      color: C.text1,
     },
     durationText: {
       fontSize: 12,
-      color: '#7f8c8d',
+      color: C.text3,
     },
     taskName: {
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: '600',
-      color: '#2c3e50',
+      color: C.text1,
       marginBottom: 5,
     },
     taskMeta: {
@@ -296,19 +309,19 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
     },
     reasonText: {
       fontSize: 13,
-      color: '#7f8c8d',
+      color: C.text2,
       fontStyle: 'italic',
     },
     suggestionsContainer: {
       marginTop: 20,
-      backgroundColor: '#e8f4fd',
+      backgroundColor: C.primaryLight,
       padding: 15,
-      borderRadius: 10,
+      borderRadius: 12,
     },
     suggestionsTitle: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      color: '#2c3e50',
+      fontSize: 15,
+      fontWeight: '700',
+      color: C.text1,
       marginBottom: 10,
     },
     suggestionItem: {
@@ -317,7 +330,7 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
       marginBottom: 8,
     },
     suggestionBullet: {
-      color: '#3498db',
+      color: C.primary,
       fontSize: 16,
       marginRight: 8,
       marginTop: 2,
@@ -325,19 +338,19 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
     suggestionText: {
       flex: 1,
       fontSize: 14,
-      color: '#34495e',
+      color: C.text2,
       lineHeight: 20,
     },
     totalHoursContainer: {
-      backgroundColor: '#f1f2f6',
+      backgroundColor: C.surface2,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: 10,
       marginBottom: 15,
       alignItems: 'center',
     },
     totalHoursText: {
       fontSize: 14,
-      color: '#2c3e50',
+      color: C.text1,
     },
     scrollContent: {
       maxHeight: screenHeight * 0.6,
@@ -348,7 +361,7 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
     },
     noTasksText: {
       fontSize: 16,
-      color: '#7f8c8d',
+      color: C.text3,
       textAlign: 'center',
     },
     // 添加处理中状态的样式
@@ -357,7 +370,7 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
       paddingVertical: 20,
     },
     processingText: {
-      color: '#3498db',
+      color: C.primary,
       fontSize: 14,
       textAlign: 'center',
       marginTop: 10,
@@ -443,7 +456,7 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
                 ) : aiJobId && !scheduleResult ? (
                   // 处理中状态显示
                   <View style={styles.processingContainer}>
-                    <ActivityIndicator size="large" color="#9b59b6" />
+                    <ActivityIndicator size="large" color="#6366F1" />
                     <Text style={styles.processingText}>
                       🤖 AI 正在为您智能安排日程...{'\n'}
                       ✨ 完成后结果会自动显示{'\n'}

@@ -46,7 +46,7 @@ const StatsTab = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3498db" />
+        <ActivityIndicator size="large" color="#6366F1" />
         <Text style={styles.loadingText}>加载统计数据...</Text>
       </View>
     );
@@ -81,7 +81,7 @@ const StatsTab = () => {
   return (
     <ScrollView
       style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3498db" />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />}
       showsVerticalScrollIndicator={false}
     >
       {/* 顶部标题栏 */}
@@ -97,7 +97,7 @@ const StatsTab = () => {
 
       {/* 概览卡片 2×2 */}
       <View style={styles.cardsGrid}>
-        <StatCard label="全部任务" value={stats.total} icon="🗂" color="#3498db" />
+        <StatCard label="全部任务" value={stats.total} icon="🗂" color="#6366F1" />
         <StatCard label="已完成" value={stats.completed} icon="✅" color="#2ecc71" />
         <StatCard label="待完成" value={stats.pending} icon="⏳" color="#f39c12" />
         <StatCard label="已逾期" value={stats.overdue} icon="⚠️" color="#e74c3c" />
@@ -190,7 +190,7 @@ const PriorityBar = ({ label, count, max, color }) => {
 
 // 标签徽章子组件
 const TAG_COLORS = {
-  '今日': '#3498db',
+  '今日': '#6366F1',
   '明日': '#2ecc71',
   '重要': '#e74c3c',
   '已完成': '#95a5a6',
@@ -209,26 +209,26 @@ const TagBadge = ({ tag, count }) => (
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#F1F5F9',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#F1F5F9',
   },
   loadingText: {
     marginTop: 12,
-    color: '#7f8c8d',
+    color: '#94A3B8',
     fontSize: 14,
   },
   errorText: {
-    color: '#e74c3c',
+    color: '#EF4444',
     fontSize: 15,
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#3498db',
+    backgroundColor: '#6366F1',
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 20,
@@ -243,30 +243,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#6366F1',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
+    paddingVertical: 18,
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#2c3e50',
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.3,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: '#95a5a6',
-    marginTop: 2,
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 3,
   },
   refreshBtn: {
-    backgroundColor: '#eaf4fb',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 14,
   },
   refreshBtnText: {
-    color: '#3498db',
+    color: '#fff',
     fontSize: 13,
     fontWeight: '600',
   },
@@ -275,77 +274,78 @@ const styles = StyleSheet.create({
   cardsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 12,
+    padding: 14,
     gap: 12,
   },
   card: {
     width: CARD_WIDTH,
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     borderLeftWidth: 4,
-    shadowColor: '#000',
+    shadowColor: '#64748B',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
     alignItems: 'flex-start',
   },
   cardIcon: {
-    fontSize: 24,
-    marginBottom: 8,
+    fontSize: 26,
+    marginBottom: 10,
   },
   cardValue: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '800',
-    lineHeight: 36,
+    lineHeight: 38,
   },
   cardLabel: {
-    fontSize: 13,
-    color: '#7f8c8d',
+    fontSize: 12,
+    color: '#94A3B8',
     marginTop: 4,
+    fontWeight: '500',
   },
 
   // 通用分区
   section: {
     backgroundColor: '#fff',
-    marginHorizontal: 12,
+    marginHorizontal: 14,
     marginBottom: 12,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
+    borderRadius: 18,
+    padding: 18,
+    shadowColor: '#64748B',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
     elevation: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   sectionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#2c3e50',
-    marginBottom: 12,
+    color: '#0F172A',
+    marginBottom: 14,
   },
 
   // 完成率
   rateText: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
   },
   progressTrack: {
-    height: 12,
-    backgroundColor: '#ecf0f1',
-    borderRadius: 6,
+    height: 10,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 5,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 6,
+    borderRadius: 5,
   },
   progressLabels: {
     flexDirection: 'row',
@@ -354,31 +354,31 @@ const styles = StyleSheet.create({
   },
   progressLabel: {
     fontSize: 11,
-    color: '#95a5a6',
+    color: '#94A3B8',
   },
 
   // 优先级条形图
   barRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   barLabel: {
     width: 90,
     fontSize: 13,
-    color: '#555',
+    color: '#475569',
   },
   barTrack: {
     flex: 1,
-    height: 10,
-    backgroundColor: '#ecf0f1',
-    borderRadius: 5,
+    height: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 4,
     overflow: 'hidden',
     marginHorizontal: 8,
   },
   barFill: {
     height: '100%',
-    borderRadius: 5,
+    borderRadius: 4,
     minWidth: 4,
   },
   barCount: {
@@ -404,11 +404,11 @@ const styles = StyleSheet.create({
   tagBadgeText: {
     color: '#fff',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     marginRight: 6,
   },
   tagBadgeCount: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
     borderRadius: 8,
     paddingHorizontal: 5,
     paddingVertical: 1,
@@ -434,19 +434,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   todayValue: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
-    color: '#3498db',
+    color: '#6366F1',
   },
   todayLabel: {
     fontSize: 12,
-    color: '#7f8c8d',
+    color: '#94A3B8',
     marginTop: 4,
   },
   todayDivider: {
     width: 1,
     height: 40,
-    backgroundColor: '#ecf0f1',
+    backgroundColor: '#E2E8F0',
   },
 
   bottomSpacer: {
@@ -455,3 +455,4 @@ const styles = StyleSheet.create({
 });
 
 export default StatsTab;
+
