@@ -9,7 +9,7 @@ from datetime import datetime, date
 from sqlalchemy import create_engine, Column, String, Boolean, Float, DateTime, Date, Text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 
-from models import Task, AIJob, AIJobStatus, DaySchedule, TaskStatus
+from app.models.schemas import Task, AIJob, AIJobStatus, DaySchedule, TaskStatus
 
 # ===== SQLAlchemy 配置 =====
 DATABASE_URL = "sqlite:///./taskgenie.db"

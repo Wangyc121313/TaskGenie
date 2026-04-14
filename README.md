@@ -1,65 +1,139 @@
 # TaskGenie
 
-TaskGenie 现已整理为单仓库（monorepo）结构，包含移动端前端和 FastAPI 后端。
+TaskGenie is a task planning application built around a mobile client and an AI-assisted API.
 
-## 目录结构
+The current product focuses on two user flows:
+
+- turn a natural-language goal into a list of executable tasks
+- generate a day plan from existing tasks
+
+This repository is organized as a monorepo so the mobile app and the API can evolve together in one place.
+
+## What This Project Is
+
+TaskGenie is not just a CRUD todo app. It tries to turn vague user intent into structured execution:
+
+- users enter a goal in natural language
+- the backend calls an LLM to break it into tasks
+- the mobile app displays, edits, and tracks those tasks
+- users can ask the system to schedule a day automatically
+
+At the moment, the AI layer is still closer to "LLM-powered planning" than a full agent architecture. That makes the repo a good base for future AI-agent refactoring.
+
+## Repository Layout
 
 ```text
 TaskGenie/
-├─ frontend/   # React Native 前端
-└─ backend/    # FastAPI 后端
++-- apps/
+|   +-- mobile/   # React Native client
+|   +-- api/      # FastAPI backend
++-- README.md
 ```
 
-## 技术栈
+This layout is intentional:
 
-- `frontend/`: React Native 0.79、React 19
-- `backend/`: FastAPI、Uvicorn、SQLAlchemy、OpenAI SDK
+- keeping client and server separate is normal
+- putting both under `apps/` makes the monorepo easier to understand
+- the root should explain the product, not duplicate app-specific setup details
 
-## 本地启动
+## Tech Stack
 
-### 1. 启动后端
+### Mobile
+
+- React Native 0.79
+- React 19
+- Context API + hooks
+- Fetch API
+
+### API
+
+- FastAPI
+- Pydantic
+- SQLAlchemy
+- SQLite
+- OpenAI-compatible SDK
+
+## Current Capabilities
+
+- task creation, update, deletion, and calendar view
+- AI task decomposition from free-form prompts
+- AI day scheduling based on due date and priority
+- local persistence for tasks, schedules, and async AI jobs
+
+## Run Locally
+
+### 1. Start the API
 
 ```bash
-cd backend
+cd apps/api
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 python run.py
 ```
 
-后端默认运行在 `http://localhost:8000`。
+The API runs on `http://localhost:8000`.
 
-### 2. 启动前端
+### 2. Start the mobile app
 
 ```bash
-cd frontend
+cd apps/mobile
 npm install
 npm start
 ```
 
-另开一个终端运行：
+In a second terminal:
 
 ```bash
-cd frontend
+cd apps/mobile
 npm run android
 ```
 
-或：
+Or:
 
 ```bash
-cd frontend
+cd apps/mobile
 npm run ios
 ```
 
-## 前后端联调
+## API Endpoint Configuration
 
-前端当前接口地址定义在 `frontend/src/context/TaskContext.js`：
+The mobile app currently reads the backend URL from:
 
-- Android 模拟器：`http://10.0.2.2:8000`
-- iOS 模拟器：`http://localhost:8000`
+`apps/mobile/src/context/TaskContext.js`
 
-如果你之后部署到真机或服务器，需要把这里改成对应的 API 地址。
+Default values:
 
-## 历史保留
+- Android emulator: `http://10.0.2.2:8000`
+- iOS simulator: `http://localhost:8000`
 
-这个单仓库保留了原前端仓库和原后端仓库的 Git 提交历史，适合作为后续统一维护的主仓库。
+## Why This Refactor
+
+This repository originally came from two separate GitHub projects. After merging them, the structure still looked like a temporary migration.
+
+This refactor fixes that:
+
+- the root README now explains the product
+- the repository now uses an `apps/` layout instead of exposing raw `frontend/` and `backend/`
+- app-specific documentation stays inside each subproject
+
+## Next Direction
+
+The current architecture is a solid base for a stronger AI application or AI-agent portfolio project. The next major upgrade would be adding:
+
+- structured LLM outputs instead of manual JSON parsing
+- tool-calling workflows
+- memory and preference storage
+- evaluation and tracing
+- agent-style planning and execution loops
+
+## Recent Refactor
+
+The API codebase now uses a package layout instead of flat top-level modules:
+
+- `apps/api/app/main.py`
+- `apps/api/app/routers/`
+- `apps/api/app/services/`
+- `apps/api/app/db/`
+- `apps/api/app/models/`
+- `apps/api/tests/`

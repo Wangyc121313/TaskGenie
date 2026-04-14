@@ -2,12 +2,12 @@
 任务服务模块 - 简化标签系统后的版本
 """
 import uuid
+from datetime import date, datetime
 from typing import List, Optional
-from datetime import datetime, date, timedelta
 
-from models import Task, TaskCreate, TaskUpdate, TaskStatus
-from database import db
-from tag_service import TagService
+from app.db.database import db
+from app.models.schemas import Task, TaskCreate, TaskStatus, TaskUpdate
+from app.services.tag_service import TagService
 
 class TaskService:
     @staticmethod
