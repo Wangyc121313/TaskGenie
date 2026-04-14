@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 
 # 导入主应用
-from main import app
-from database import db
-from models import Task
+from app.db.database import db
+from app.main import app
+from app.models.schemas import Task
 
 # 创建测试客户端
 client = TestClient(app)

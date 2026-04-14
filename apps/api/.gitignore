@@ -1,4 +1,5 @@
 /__pycache__
+**/__pycache__/
 /venv
 .env
 *.db
@@ -6,4 +7,5 @@
 *.db-wal
 /.vscode
 /.pytest_cache
+pytest-cache-files-*/
 server_log.txt

@@ -3,14 +3,15 @@ AI服务模块 - 简化标签系统后的版本
 """
 import json
 import uuid
-from typing import List, Dict, Any
 from datetime import datetime, timedelta
+from typing import Any, Dict, List
+
 from openai import OpenAI
 
-from models import Task, AIJob, AIJobStatus, DaySchedule, TaskScheduleItem
-from database import db
-from tag_service import TagService
-from config import current_settings
+from app.core.config import current_settings
+from app.db.database import db
+from app.models.schemas import AIJob, AIJobStatus, DaySchedule, Task, TaskScheduleItem
+from app.services.tag_service import TagService
 
 # 配置 OpenAI 客户端（从配置文件读取，不硬编码敏感信息）
 client = OpenAI(
