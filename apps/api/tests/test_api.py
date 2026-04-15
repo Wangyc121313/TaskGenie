@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.db.database import db
 from app.main import app
-from app.models.schemas import AIJob, AIJobStatus, PlannedTask, TaskPlanningResult
+from app.models.schemas import AgentExecutionStatus, AIJob, AIJobStatus, PlannedTask, TaskPlanningResult
 from app.services.ai_service import AIService
 from app.services.task_planning_workflow import TaskPlanningWorkflow
 
@@ -421,7 +421,7 @@ class TestTaskGenieAPI:
         assert job is not None
         assert job.status == AIJobStatus.COMPLETED
         assert job.trace is not None
-        assert job.trace.execution_status == "completed"
+        assert job.trace.execution_status == AgentExecutionStatus.COMPLETED
         assert job.trace.current_step == "completed"
         assert job.trace.task_type == "development"
         assert job.trace.project_theme == "Agent Upgrade"
