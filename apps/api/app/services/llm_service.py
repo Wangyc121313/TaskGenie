@@ -1,0 +1,81 @@
+import json
+import re
+from typing import Type, TypeVar
+
+from openai import OpenAI
+from pydantic import BaseModel, ValidationError
+
+from app.core.config import current_settings
+
+
+ResponseModelT = TypeVar("ResponseModelT", bound=BaseModel)
+
+
+class LLMResponseError(RuntimeError):
+    pass
+
+
+class LLMService:
+    _client = OpenAI(
+        api_key=current_settings.OPENAI_API_KEY,
+        base_url=current_settings.OPENAI_BASE_URL,
+        timeout=current_settings.AI_RESPONSE_TIMEOUT,
+    )
+
+    @classmethod
+    def generate_structured_output(
+        cls,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: Type[ResponseModelT],
+        temperature: float = 0.7,
+        max_tokens: int = 1200,
+    ) -> ResponseModelT:
+        response = cls._client.chat.completions.create(
+            model=current_settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        content = response.choices[0].message.content or ""
+        payload = cls._extract_json_payload(content)
+
+        try:
+            return response_model.model_validate(payload)
+        except ValidationError as exc:
+            raise LLMResponseError(
+                f"Model response did not match {response_model.__name__}: {exc}"
+            ) from exc
+
+    @staticmethod
+    def _extract_json_payload(content: str):
+        code_fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
+        if code_fence_match:
+            candidate = code_fence_match.group(1)
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+
+        object_start = content.find("{")
+        object_end = content.rfind("}") + 1
+        if object_start != -1 and object_end > object_start:
+            try:
+                return json.loads(content[object_start:object_end])
+            except json.JSONDecodeError:
+                pass
+
+        array_start = content.find("[")
+        array_end = content.rfind("]") + 1
+        if array_start != -1 and array_end > array_start:
+            try:
+                return json.loads(content[array_start:array_end])
+            except json.JSONDecodeError:
+                pass
+
+        raise LLMResponseError("Could not extract valid JSON from model response")
