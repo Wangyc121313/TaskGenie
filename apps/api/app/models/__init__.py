@@ -1,5 +1,6 @@
 from app.models.schemas import (
     AIDayScheduleRequest,
+    AIImageTaskRequest,
     AgentExecutionStatus,
     AgentTraceEvent,
     AgentToolCallTrace,
@@ -10,6 +11,8 @@ from app.models.schemas import (
     DaySchedule,
     DayScheduleGenerationResult,
     DayScheduleResponse,
+    ImageTaskCandidate,
+    ImageTaskExtractionResult,
     PlannedScheduleItem,
     PlannedTask,
     TagsResponse,
@@ -30,6 +33,7 @@ from app.models.schemas import (
 
 __all__ = [
     "AIDayScheduleRequest",
+    "AIImageTaskRequest",
     "AgentExecutionStatus",
     "AgentTraceEvent",
     "AgentToolCallTrace",
@@ -40,6 +44,8 @@ __all__ = [
     "DaySchedule",
     "DayScheduleGenerationResult",
     "DayScheduleResponse",
+    "ImageTaskCandidate",
+    "ImageTaskExtractionResult",
     "PlannedScheduleItem",
     "PlannedTask",
     "TagsResponse",

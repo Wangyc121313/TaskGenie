@@ -11,6 +11,8 @@ from app.models.schemas import (
     AgentToolCallTrace,
     DaySchedule,
     DayScheduleGenerationResult,
+    ImageTaskExtractionResult,
+    PlannedTask,
     Task,
     TaskPlanningTrace,
     TaskScheduleItem,
@@ -169,6 +171,197 @@ class AIService:
             )
 
     @staticmethod
+    async def process_image_task_planning(
+        job_id: str,
+        *,
+        image_bytes: bytes,
+        image_mime_type: str,
+        filename: str,
+        notes: str,
+        max_tasks: int,
+        auto_create: bool,
+    ):
+        trace: Optional[TaskPlanningTrace] = None
+        try:
+            now = datetime.now()
+            task_type = "image_planning"
+            trace = TaskPlanningTrace(
+                execution_status=AgentExecutionStatus.PLANNING,
+                current_step="image_analysis",
+                input_modality="image",
+                task_type=task_type,
+                started_at=now,
+            )
+            planning_context = MemoryService.build_planning_context(prompt=notes or filename)
+            trace.preference_snapshot = planning_context.preferences
+            trace.relevant_memories = planning_context.relevant_memories
+            trace.behavior_summary = planning_context.behavior_summary
+            AIService._append_trace_event(
+                trace,
+                event_type="image_received",
+                stage="input",
+                message="Received an image for multimodal task extraction.",
+                metadata={
+                    "filename": filename,
+                    "mime_type": image_mime_type,
+                    "auto_create": auto_create,
+                },
+            )
+            AIService._append_trace_event(
+                trace,
+                event_type="memory_loaded",
+                stage="context",
+                message="Loaded user preferences and relevant memories.",
+                metadata={
+                    "memory_count": len(planning_context.relevant_memories),
+                    "planning_style": planning_context.preferences.planning_style,
+                },
+            )
+            AIService._update_job_state(
+                job_id,
+                status=AIJobStatus.PROCESSING,
+                trace=trace,
+                error=None,
+            )
+
+            extraction_result = LLMService.generate_multimodal_structured_output(
+                system_prompt=AIService._build_image_task_system_prompt(
+                    max_tasks=max_tasks,
+                    planning_context=planning_context.prompt_context,
+                ),
+                user_prompt=AIService._build_image_task_user_prompt(
+                    filename=filename,
+                    notes=notes,
+                ),
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+                response_model=ImageTaskExtractionResult,
+                temperature=0.3,
+                max_tokens=1600,
+            )
+
+            trace.project_theme = extraction_result.detected_context
+            trace.source_summary = extraction_result.scene_summary
+            trace.extracted_candidates = extraction_result.tasks
+            AIService._append_trace_event(
+                trace,
+                event_type="image_analysis_completed",
+                stage="planning",
+                message="Extracted structured task candidates from the image.",
+                metadata={
+                    "candidate_count": len(extraction_result.tasks),
+                    "warning_count": len(extraction_result.warnings),
+                },
+            )
+
+            created_tasks: list[Task] = []
+            if auto_create and extraction_result.tasks:
+                planned_tasks = [
+                    PlannedTask(
+                        name=candidate.name,
+                        description=candidate.description,
+                        priority=candidate.priority,
+                        estimated_hours=candidate.estimated_hours,
+                        due_date=candidate.due_date,
+                    )
+                    for candidate in extraction_result.tasks
+                ]
+                trace.planned_tasks = planned_tasks
+                tool_calls = TaskPlanningWorkflow.build_execution_plan(
+                    planned_tasks=planned_tasks,
+                    project_theme=extraction_result.detected_context or "Image Tasks",
+                    max_tasks=max_tasks,
+                    now=now,
+                )
+                trace.execution_status = AgentExecutionStatus.EXECUTING
+                trace.current_step = "executing"
+                trace.tool_calls = [
+                    AgentToolCallTrace(
+                        tool_name=tool_call.tool_name,
+                        arguments=tool_call.to_trace_payload(),
+                    )
+                    for tool_call in tool_calls
+                ]
+                AIService._append_trace_event(
+                    trace,
+                    event_type="execution_started",
+                    stage="execution",
+                    message="Converted image-derived tasks into internal tool calls.",
+                    metadata={"tool_call_count": len(tool_calls)},
+                )
+                AIService._update_job_state(
+                    job_id,
+                    status=AIJobStatus.PROCESSING,
+                    trace=trace,
+                )
+                created_tasks = TaskPlanningWorkflow.execute_plan(
+                    tool_calls,
+                    on_step=lambda index, _tool_call, result, error: AIService._record_tool_step(
+                        job_id=job_id,
+                        trace=trace,
+                        index=index,
+                        result=result,
+                        error=error,
+                    ),
+                )
+                trace.created_tasks = created_tasks
+
+            trace.execution_status = AgentExecutionStatus.COMPLETED
+            trace.current_step = "completed"
+            trace.finished_at = datetime.now()
+            AIService._append_trace_event(
+                trace,
+                event_type="run_completed",
+                stage="completion",
+                message="Completed the image-to-task workflow successfully.",
+                metadata={
+                    "candidate_count": len(extraction_result.tasks),
+                    "created_task_count": len(created_tasks),
+                },
+            )
+            AIService._update_job_state(
+                job_id,
+                status=AIJobStatus.COMPLETED,
+                result={
+                    "scene_summary": extraction_result.scene_summary,
+                    "detected_context": extraction_result.detected_context,
+                    "warnings": extraction_result.warnings,
+                    "task_candidates": [
+                        candidate.model_dump(mode="json") for candidate in extraction_result.tasks
+                    ],
+                    "created_tasks": [
+                        task.model_dump(mode="json") for task in created_tasks
+                    ],
+                    "auto_create": auto_create,
+                },
+                trace=trace,
+                error=None,
+            )
+        except Exception as exc:
+            failed_trace = trace or TaskPlanningTrace(
+                execution_status=AgentExecutionStatus.FAILED,
+                current_step="failed",
+                input_modality="image",
+                started_at=datetime.now(),
+            )
+            failed_trace.execution_status = AgentExecutionStatus.FAILED
+            failed_trace.current_step = "failed"
+            failed_trace.finished_at = datetime.now()
+            AIService._append_trace_event(
+                failed_trace,
+                event_type="run_failed",
+                stage="failure",
+                message="The image-to-task workflow failed.",
+                metadata={"error": str(exc)},
+            )
+            AIService._update_job_state(
+                job_id,
+                status=AIJobStatus.FAILED,
+                trace=failed_trace,
+                error=f"Image task planning failed: {exc}",
+            )
+
+    @staticmethod
     async def process_day_schedule(
         job_id: str,
         date_str: str,
@@ -285,6 +478,53 @@ Guidelines:
 - Only use task ids from this list: {task_ids}
 - Do not include markdown fences.
 """.strip()
+
+    @staticmethod
+    def _build_image_task_system_prompt(max_tasks: int, planning_context: str) -> str:
+        return f"""
+You are an AI multimodal productivity assistant.
+Analyze the provided image and extract actionable tasks from visible text, layout, and context clues.
+
+Use this user preference and memory context when deciding task priority and estimates:
+{planning_context}
+
+Return exactly one JSON object with this schema:
+{{
+  "scene_summary": "short summary of what the image contains",
+  "detected_context": "short theme or project context",
+  "tasks": [
+    {{
+      "name": "task title",
+      "description": "clear execution details",
+      "priority": "low|medium|high",
+      "estimated_hours": 1.5,
+      "due_date": "optional ISO datetime or null",
+      "confidence": 0.85,
+      "source_snippet": "the text or visual clue that suggested this task"
+    }}
+  ],
+  "warnings": ["optional warning about ambiguity"]
+}}
+
+Requirements:
+- Return between 0 and {max_tasks} tasks.
+- Only return tasks that are reasonably supported by the image.
+- Keep confidence between 0 and 1.
+- Use concise summaries and no markdown fences.
+""".strip()
+
+    @staticmethod
+    def _build_image_task_user_prompt(filename: str, notes: str) -> str:
+        if notes.strip():
+            return (
+                f"Image filename: {filename}\n"
+                f"Additional user notes:\n{notes.strip()}\n"
+                "Extract actionable tasks from the image and notes."
+            )
+        return (
+            f"Image filename: {filename}\n"
+            "Extract actionable tasks from the image."
+        )
 
     @staticmethod
     def _analyze_task_type(prompt: str) -> str:
