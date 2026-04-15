@@ -1,6 +1,7 @@
 from app.models.schemas import (
     AIDayScheduleRequest,
     AgentExecutionStatus,
+    AgentTraceEvent,
     AgentToolCallTrace,
     AIJob,
     AIJobStatus,
@@ -25,6 +26,7 @@ from app.models.schemas import (
 __all__ = [
     "AIDayScheduleRequest",
     "AgentExecutionStatus",
+    "AgentTraceEvent",
     "AgentToolCallTrace",
     "AIJob",
     "AIJobStatus",

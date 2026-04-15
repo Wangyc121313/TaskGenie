@@ -108,6 +108,14 @@ class AgentToolCallTrace(BaseModel):
     error: Optional[str] = None
 
 
+class AgentTraceEvent(BaseModel):
+    timestamp: datetime
+    event_type: str
+    stage: str
+    message: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class TaskPlanningTrace(BaseModel):
     execution_status: AgentExecutionStatus = AgentExecutionStatus.PENDING
     current_step: str = "queued"
@@ -115,6 +123,7 @@ class TaskPlanningTrace(BaseModel):
     project_theme: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    events: List[AgentTraceEvent] = Field(default_factory=list)
     planned_tasks: List[PlannedTask] = Field(default_factory=list)
     tool_calls: List[AgentToolCallTrace] = Field(default_factory=list)
     created_tasks: List[Task] = Field(default_factory=list)

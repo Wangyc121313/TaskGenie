@@ -309,10 +309,20 @@ class TestTaskGenieAPI:
         assert job.trace.current_step == "completed"
         assert job.trace.task_type == "development"
         assert job.trace.project_theme == "Agent Upgrade"
+        assert len(job.trace.events) >= 5
+        assert job.trace.events[0].event_type == "planning_started"
+        assert job.trace.events[1].event_type == "planning_completed"
+        assert job.trace.events[2].event_type == "execution_started"
+        assert job.trace.events[-1].event_type == "run_completed"
+        assert job.trace.events[-1].metadata["created_task_count"] == 2
         assert len(job.trace.planned_tasks) == 2
         assert len(job.trace.tool_calls) == 2
         assert len(job.trace.created_tasks) == 2
         assert all(tool_call.status == "completed" for tool_call in job.trace.tool_calls)
         assert all(tool_call.output is not None for tool_call in job.trace.tool_calls)
+        completed_tool_events = [
+            event for event in job.trace.events if event.event_type == "tool_completed"
+        ]
+        assert len(completed_tool_events) == 2
         assert isinstance(job.result, list)
         assert len(job.result) == 2

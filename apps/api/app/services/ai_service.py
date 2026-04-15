@@ -7,6 +7,7 @@ from app.db.database import db
 from app.models.schemas import (
     AIJobStatus,
     AgentExecutionStatus,
+    AgentTraceEvent,
     AgentToolCallTrace,
     DaySchedule,
     DayScheduleGenerationResult,
@@ -31,6 +32,16 @@ class AIService:
                 task_type=task_type,
                 started_at=now,
             )
+            AIService._append_trace_event(
+                trace,
+                event_type="planning_started",
+                stage="planning",
+                message="Started analyzing the user goal and generating a task plan.",
+                metadata={
+                    "task_type": task_type,
+                    "max_tasks": max_tasks,
+                },
+            )
             AIService._update_job_state(
                 job_id,
                 status=AIJobStatus.PROCESSING,
@@ -46,6 +57,16 @@ class AIService:
             )
             trace.project_theme = planning_result.project_theme
             trace.planned_tasks = planning_result.tasks
+            AIService._append_trace_event(
+                trace,
+                event_type="planning_completed",
+                stage="planning",
+                message="Generated a structured task plan.",
+                metadata={
+                    "project_theme": planning_result.project_theme,
+                    "planned_task_count": len(planning_result.tasks),
+                },
+            )
 
             tool_calls = TaskPlanningWorkflow.build_execution_plan(
                 planned_tasks=planning_result.tasks,
@@ -62,6 +83,15 @@ class AIService:
                 )
                 for tool_call in tool_calls
             ]
+            AIService._append_trace_event(
+                trace,
+                event_type="execution_started",
+                stage="execution",
+                message="Converted the plan into internal tool calls.",
+                metadata={
+                    "tool_call_count": len(tool_calls),
+                },
+            )
             AIService._update_job_state(
                 job_id,
                 status=AIJobStatus.PROCESSING,
@@ -82,6 +112,15 @@ class AIService:
             trace.execution_status = AgentExecutionStatus.COMPLETED
             trace.current_step = "completed"
             trace.finished_at = datetime.now()
+            AIService._append_trace_event(
+                trace,
+                event_type="run_completed",
+                stage="completion",
+                message="Completed the AI planning workflow successfully.",
+                metadata={
+                    "created_task_count": len(created_tasks),
+                },
+            )
 
             AIService._update_job_state(
                 job_id,
@@ -99,6 +138,13 @@ class AIService:
             failed_trace.execution_status = AgentExecutionStatus.FAILED
             failed_trace.current_step = "failed"
             failed_trace.finished_at = datetime.now()
+            AIService._append_trace_event(
+                failed_trace,
+                event_type="run_failed",
+                stage="failure",
+                message="The AI planning workflow failed.",
+                metadata={"error": str(exc)},
+            )
             AIService._update_job_state(
                 job_id,
                 status=AIJobStatus.FAILED,
@@ -331,6 +377,17 @@ Guidelines:
             tool_call.error = str(error)
             trace.execution_status = AgentExecutionStatus.FAILED
             trace.current_step = "failed"
+            AIService._append_trace_event(
+                trace,
+                event_type="tool_failed",
+                stage="execution",
+                message=f"Tool call {index + 1} failed.",
+                metadata={
+                    "tool_name": tool_call.tool_name,
+                    "tool_index": index,
+                    "error": str(error),
+                },
+            )
         else:
             tool_call.status = "completed"
             tool_call.output = (
@@ -348,6 +405,17 @@ Guidelines:
                     if current_task.id != result.id
                 ]
                 trace.created_tasks.append(result)
+            AIService._append_trace_event(
+                trace,
+                event_type="tool_completed",
+                stage="execution",
+                message=f"Tool call {index + 1} completed.",
+                metadata={
+                    "tool_name": tool_call.tool_name,
+                    "tool_index": index,
+                    "task_id": result.id if result is not None else None,
+                },
+            )
 
         AIService._update_job_state(
             job_id,
@@ -377,3 +445,22 @@ Guidelines:
             job.error = error
 
         db.update_ai_job(job_id, job)
+
+    @staticmethod
+    def _append_trace_event(
+        trace: TaskPlanningTrace,
+        *,
+        event_type: str,
+        stage: str,
+        message: str,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        trace.events.append(
+            AgentTraceEvent(
+                timestamp=datetime.now(),
+                event_type=event_type,
+                stage=stage,
+                message=message,
+                metadata=metadata or {},
+            )
+        )
