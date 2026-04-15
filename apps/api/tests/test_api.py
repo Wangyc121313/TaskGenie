@@ -387,7 +387,7 @@ class TestTaskGenieAPI:
         encoded_image = base64.b64encode(b"fake-image-bytes").decode("utf-8")
 
         response = client.post(
-            "/ai/plan-image/test",
+            "/ai/plan-image/sync",
             json={
                 "image_base64": encoded_image,
                 "image_mime_type": "image/png",
@@ -428,7 +428,7 @@ class TestTaskGenieAPI:
         encoded_image = base64.b64encode(b"fake-image-bytes").decode("utf-8")
 
         response = client.post(
-            "/ai/plan-image/test",
+            "/ai/plan-image/sync",
             json={
                 "image_base64": encoded_image,
                 "image_mime_type": "image/png",

@@ -1,26 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
+
 import { API_URL } from '../context/TaskContext';
+
 
 export const useTaskOperations = () => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [imagePlanningLoading, setImagePlanningLoading] = useState(false);
   const [aiJobId, setAiJobId] = useState(null);
 
-  // 获取所有任务
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/tasks`);
       const data = await response.json();
       setTasks(data);
     } catch (error) {
-      Alert.alert('错误', '获取任务失败');
+      Alert.alert('Error', 'Failed to load tasks.');
       console.error(error);
     }
-  };
+  }, []);
 
-  // 创建任务
-  const createTask = async (taskData) => {
+  const createTask = async (taskData, options = {}) => {
+    const { refresh = true, showAlert = false } = options;
     try {
       const response = await fetch(`${API_URL}/tasks`, {
         method: 'POST',
@@ -30,28 +32,57 @@ export const useTaskOperations = () => {
         body: JSON.stringify(taskData),
       });
 
-      if (response.ok) {
-        await fetchTasks();
-        return true;
+      if (!response.ok) {
+        return false;
       }
-      return false;
+
+      if (refresh) {
+        await fetchTasks();
+      }
+      if (showAlert) {
+        Alert.alert('Success', 'Task created.');
+      }
+      return true;
     } catch (error) {
-      Alert.alert('错误', '创建任务失败');
+      Alert.alert('Error', 'Failed to create task.');
       console.error(error);
       return false;
     }
   };
 
-  // 更新任务
+  const createTasksFromCandidates = async (taskCandidates, contextTitle = '') => {
+    let successCount = 0;
+    for (const candidate of taskCandidates) {
+      const normalizedName = contextTitle
+        ? `${contextTitle}: ${candidate.name}`
+        : candidate.name;
+
+      const created = await createTask(
+        {
+          name: normalizedName,
+          description: candidate.source_snippet
+            ? `${candidate.description}\n\nSource: ${candidate.source_snippet}`
+            : candidate.description,
+          priority: candidate.priority,
+          due_date: candidate.due_date || null,
+          estimated_hours: candidate.estimated_hours || null,
+        },
+        { refresh: false },
+      );
+      if (created) {
+        successCount += 1;
+      }
+    }
+
+    await fetchTasks();
+    return successCount;
+  };
+
   const updateTask = async (taskId, updateData) => {
     try {
-      let payload = updateData;
-      
-      if (updateData.hasOwnProperty('completed')) {
-        payload = {
-          completed: updateData.completed,
-        };
-      }
+      const payload = Object.prototype.hasOwnProperty.call(updateData, 'completed')
+        ? { completed: updateData.completed }
+        : updateData;
 
       const response = await fetch(`${API_URL}/tasks/${taskId}`, {
         method: 'PUT',
@@ -61,19 +92,19 @@ export const useTaskOperations = () => {
         body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
-        await fetchTasks();
-        return true;
+      if (!response.ok) {
+        return false;
       }
-      return false;
+
+      await fetchTasks();
+      return true;
     } catch (error) {
-      Alert.alert('错误', '更新任务失败');
+      Alert.alert('Error', 'Failed to update task.');
       console.error(error);
       return false;
     }
   };
 
-  // 切换任务完成状态
   const toggleTaskCompletion = async (taskId, currentCompleted) => {
     try {
       const response = await fetch(`${API_URL}/tasks/${taskId}`, {
@@ -86,65 +117,58 @@ export const useTaskOperations = () => {
         }),
       });
 
-      if (response.ok) {
-        // 立即更新本地状态
-        setTasks(prevTasks => prevTasks.map(task => {
-          if (task.id === taskId) {
-            return {
-              ...task,
-              completed: !currentCompleted,
-            };
-          }
-          return task;
-        }));
-        
-        // 然后同步后端状态
-        await fetchTasks();
-        return true;
+      if (!response.ok) {
+        return false;
       }
-      return false;
+
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === taskId
+            ? {
+                ...task,
+                completed: !currentCompleted,
+              }
+            : task,
+        ),
+      );
+
+      await fetchTasks();
+      return true;
     } catch (error) {
-      Alert.alert('错误', '切换任务状态失败');
+      Alert.alert('Error', 'Failed to update task status.');
       console.error(error);
       await fetchTasks();
       return false;
     }
   };
 
-  // 删除任务
-  const deleteTask = async (taskId) => {
-    Alert.alert(
-      '确认删除',
-      '确定要删除这个任务吗？',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(`${API_URL}/tasks/${taskId}`, {
-                method: 'DELETE',
-              });
+  const deleteTask = async taskId => {
+    Alert.alert('Delete Task', 'Delete this task?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+              method: 'DELETE',
+            });
 
-              if (response.ok) {
-                await fetchTasks();
-              }
-            } catch (error) {
-              Alert.alert('错误', '删除任务失败');
-              console.error(error);
+            if (response.ok) {
+              await fetchTasks();
             }
-          },
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete task.');
+            console.error(error);
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
-  // AI 规划任务 - 修复版本，正确传递 maxTasks 参数
   const aiPlanTasks = async (prompt, maxTasks = 5) => {
     setLoading(true);
-    console.log('🚀 发送AI规划请求', { prompt, max_tasks: maxTasks }); // 添加调试日志
-    
+
     try {
       const response = await fetch(`${API_URL}/ai/plan-tasks/async`, {
         method: 'POST',
@@ -152,65 +176,109 @@ export const useTaskOperations = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: prompt,
-          max_tasks: maxTasks, // 修复：确保正确传递参数
+          prompt,
+          max_tasks: maxTasks,
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ AI规划响应', data); // 添加调试日志
-        setAiJobId(data.job_id);
-        Alert.alert('处理中', `AI 正在为您规划 ${maxTasks} 个任务，请稍候...`);
-      } else {
+      if (!response.ok) {
         const error = await response.json();
-        Alert.alert('错误', error.detail || 'AI 处理失败');
+        Alert.alert('Error', error.detail || 'AI planning failed.');
+        return;
       }
+
+      const data = await response.json();
+      setAiJobId(data.job_id);
+      Alert.alert(
+        'Planning',
+        `The AI planner is generating up to ${maxTasks} tasks for you.`,
+      );
     } catch (error) {
-      Alert.alert('错误', 'AI 规划失败，请检查网络连接');
-      console.error('AI规划请求失败:', error);
+      Alert.alert('Error', 'AI planning failed.');
+      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  // 检查 AI 任务状态 - 移除完成提示
-  useEffect(() => {
-    if (aiJobId) {
-      const checkJobStatus = setInterval(async () => {
-        try {
-          const response = await fetch(`${API_URL}/ai/jobs/${aiJobId}`);
-          const job = await response.json();
-          
-          console.log('📊 AI作业状态检查:', job.status); // 添加调试日志
-          
-          if (job.status === 'completed') {
-            setAiJobId(null);
-            await fetchTasks(); // 静默刷新任务列表
-            console.log('✅ AI规划完成，任务数量:', job.result?.length || 0);
-            // 移除了 Alert.alert('成功', 'AI 已为您规划任务');
-          } else if (job.status === 'failed') {
-            setAiJobId(null);
-            Alert.alert('错误', job.error || 'AI 处理失败');
-          }
-        } catch (error) {
-          console.error('检查任务状态失败', error);
-        }
-      }, 2000);
+  const aiPlanImageTasks = async ({
+    imageBase64,
+    imageMimeType,
+    filename,
+    notes,
+    maxTasks = 5,
+  }) => {
+    setImagePlanningLoading(true);
 
-      return () => clearInterval(checkJobStatus);
+    try {
+      const response = await fetch(`${API_URL}/ai/plan-image/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_base64: imageBase64,
+          image_mime_type: imageMimeType,
+          filename,
+          notes,
+          max_tasks: maxTasks,
+          auto_create: false,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        Alert.alert('Error', data.error || data.detail || 'Image planning failed.');
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      Alert.alert('Error', 'Image planning failed.');
+      console.error(error);
+      return null;
+    } finally {
+      setImagePlanningLoading(false);
     }
-  }, [aiJobId]);
+  };
+
+  useEffect(() => {
+    if (!aiJobId) {
+      return undefined;
+    }
+
+    const timer = setInterval(async () => {
+      try {
+        const response = await fetch(`${API_URL}/ai/jobs/${aiJobId}`);
+        const job = await response.json();
+
+        if (job.status === 'completed') {
+          setAiJobId(null);
+          await fetchTasks();
+        } else if (job.status === 'failed') {
+          setAiJobId(null);
+          Alert.alert('Error', job.error || 'AI processing failed.');
+        }
+      } catch (error) {
+        console.error('Failed to check AI job status:', error);
+      }
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [aiJobId, fetchTasks]);
 
   return {
     tasks,
     loading,
+    imagePlanningLoading,
     aiJobId,
     fetchTasks,
     createTask,
+    createTasksFromCandidates,
     updateTask,
     toggleTaskCompletion,
     deleteTask,
     aiPlanTasks,
+    aiPlanImageTasks,
   };
 };

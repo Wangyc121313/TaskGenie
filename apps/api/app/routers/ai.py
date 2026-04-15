@@ -178,6 +178,15 @@ async def test_ai_planning(prompt: str = "Learn React Native", max_tasks: int = 
 
 @ai_router.post("/plan-image/test")
 async def test_ai_image_planning(request: AIImageTaskRequest):
+    return await _run_image_planning_sync(request)
+
+
+@ai_router.post("/plan-image/sync")
+async def sync_ai_image_planning(request: AIImageTaskRequest):
+    return await _run_image_planning_sync(request)
+
+
+async def _run_image_planning_sync(request: AIImageTaskRequest):
     image_bytes = _decode_and_validate_image(
         image_base64=request.image_base64,
         content_type=request.image_mime_type,
