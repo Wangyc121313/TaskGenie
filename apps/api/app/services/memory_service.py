@@ -5,13 +5,13 @@ from typing import List, Optional
 
 from app.db.database import db
 from app.models.schemas import (
+    Task,
     UserMemoryCreate,
     UserMemoryItem,
     UserPlanningContext,
     UserPreferences,
     UserPreferencesUpdate,
 )
-from app.services.task_service import TaskService
 
 
 class MemoryService:
@@ -48,6 +48,22 @@ class MemoryService:
         payload: UserMemoryCreate,
         user_id: str = "default",
     ) -> UserMemoryItem:
+        existing_memory = MemoryService._find_memory_by_content(
+            user_id=user_id,
+            content=payload.content,
+            category=payload.category,
+        )
+        if existing_memory:
+            merged_tags = sorted(set(existing_memory.tags + payload.tags))
+            refreshed_memory = existing_memory.model_copy(
+                update={
+                    "source": payload.source,
+                    "tags": merged_tags,
+                    "updated_at": datetime.now(),
+                }
+            )
+            return db.update_user_memory(refreshed_memory) or refreshed_memory
+
         now = datetime.now()
         memory = UserMemoryItem(
             id=str(uuid.uuid4()),
@@ -84,12 +100,9 @@ class MemoryService:
         )
 
         for memory in relevant_memories:
-            if memory.last_used_at is None:
-                updated_memory = memory.model_copy(update={"last_used_at": datetime.now()})
-                db.update_user_memory(updated_memory)
-            else:
-                updated_memory = memory.model_copy(update={"last_used_at": datetime.now()})
-                db.update_user_memory(updated_memory)
+            db.update_user_memory(
+                memory.model_copy(update={"last_used_at": datetime.now()})
+            )
 
         return UserPlanningContext(
             preferences=preferences,
@@ -97,6 +110,101 @@ class MemoryService:
             behavior_summary=behavior_summary,
             prompt_context=prompt_context,
         )
+
+    @staticmethod
+    def observe_task_patterns(
+        task: Task,
+        previous_task: Optional[Task] = None,
+        user_id: str = "default",
+    ) -> None:
+        MemoryService._apply_duration_preference(task=task, user_id=user_id)
+
+        for extracted_memory in MemoryService._extract_memories_from_task(task):
+            if previous_task and extracted_memory.content in [
+                previous_task.name or "",
+                previous_task.description or "",
+            ]:
+                continue
+            MemoryService.create_memory(extracted_memory, user_id=user_id)
+
+    @staticmethod
+    def _apply_duration_preference(task: Task, user_id: str) -> None:
+        if not task.estimated_hours:
+            return
+
+        preferences = MemoryService.get_preferences(user_id)
+        smoothed_duration = round(
+            preferences.preferred_task_duration_hours * 0.7 + float(task.estimated_hours) * 0.3,
+            1,
+        )
+        if abs(smoothed_duration - preferences.preferred_task_duration_hours) < 0.2:
+            return
+
+        updated_preferences = preferences.model_copy(
+            update={
+                "preferred_task_duration_hours": smoothed_duration,
+                "updated_at": datetime.now(),
+            }
+        )
+        db.upsert_user_preferences(updated_preferences)
+
+    @staticmethod
+    def _extract_memories_from_task(task: Task) -> List[UserMemoryCreate]:
+        text_blocks = [task.name or "", task.description or ""]
+        extracted: List[UserMemoryCreate] = []
+
+        for text in text_blocks:
+            if not text:
+                continue
+
+            lower_text = text.lower()
+            if any(keyword in lower_text for keyword in ["focus on", "prioritize", "goal", "career"]):
+                extracted.append(
+                    UserMemoryCreate(
+                        category="goal",
+                        source="inferred",
+                        content=text.strip(),
+                        tags=["task-derived", "goal"],
+                    )
+                )
+
+            if any(keyword in lower_text for keyword in ["avoid", "before", "after", "not during", "不要", "避免", "之前"]):
+                extracted.append(
+                    UserMemoryCreate(
+                        category="constraint",
+                        source="inferred",
+                        content=text.strip(),
+                        tags=["task-derived", "constraint"],
+                    )
+                )
+
+            if any(keyword in lower_text for keyword in ["prefer", "usually", "习惯", "偏好"]):
+                extracted.append(
+                    UserMemoryCreate(
+                        category="preference",
+                        source="inferred",
+                        content=text.strip(),
+                        tags=["task-derived", "preference"],
+                    )
+                )
+
+        deduped = {}
+        for memory in extracted:
+            deduped[(memory.category, memory.content.strip().lower())] = memory
+        return list(deduped.values())
+
+    @staticmethod
+    def _find_memory_by_content(
+        *,
+        user_id: str,
+        content: str,
+        category: str,
+    ) -> Optional[UserMemoryItem]:
+        normalized_content = content.strip().lower()
+        for memory in db.list_user_memories(user_id=user_id):
+            if memory.category == category and memory.content.strip().lower() == normalized_content:
+                return memory
+        return None
 
     @staticmethod
     def _select_relevant_memories(
@@ -118,7 +226,9 @@ class MemoryService:
 
         scored_memories = []
         for memory in memories:
-            searchable_text = " ".join([memory.content.lower(), " ".join(tag.lower() for tag in memory.tags)])
+            searchable_text = " ".join(
+                [memory.content.lower(), " ".join(tag.lower() for tag in memory.tags)]
+            )
             score = 0
             for token in tokens:
                 if token in searchable_text:
@@ -142,17 +252,25 @@ class MemoryService:
 
     @staticmethod
     def _build_behavior_summary() -> str:
-        stats = TaskService.get_task_stats()
-        tasks = TaskService.get_all_tasks()
-        open_task_hours = [task.estimated_hours for task in tasks if not task.completed and task.estimated_hours]
+        tasks = db.get_all_tasks()
+        pending_tasks = [task for task in tasks if not task.completed]
+        overdue_tasks = [
+            task
+            for task in pending_tasks
+            if task.due_date and task.due_date.date() < datetime.now().date()
+        ]
+        open_task_hours = [
+            task.estimated_hours for task in pending_tasks if task.estimated_hours
+        ]
         average_open_task_hours = (
             round(sum(open_task_hours) / len(open_task_hours), 1) if open_task_hours else 0.0
         )
+        high_priority_pending = sum(1 for task in pending_tasks if task.priority == "high")
 
         return (
-            f"The user currently has {stats['pending']} pending tasks, "
-            f"{stats['overdue']} overdue tasks, and an average open-task estimate of "
-            f"{average_open_task_hours} hours. High-priority open tasks: {stats['by_priority']['high']}."
+            f"The user currently has {len(pending_tasks)} pending tasks, "
+            f"{len(overdue_tasks)} overdue tasks, and an average open-task estimate of "
+            f"{average_open_task_hours} hours. High-priority open tasks: {high_priority_pending}."
         )
 
     @staticmethod

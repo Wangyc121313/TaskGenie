@@ -317,6 +317,36 @@ class TestTaskGenieAPI:
         assert delete_response.status_code == 200
         assert delete_response.json()["message"] == "Memory deleted."
 
+    def test_task_auto_extracts_memory_and_updates_preferences(self):
+        response = client.post(
+            "/tasks",
+            json={
+                "name": "Focus on AI agent projects this quarter",
+                "description": "Avoid meetings before 10am. I prefer 1-hour focus blocks.",
+                "priority": "high",
+                "estimated_hours": 1.0,
+            },
+        )
+        assert response.status_code == 200
+
+        memories_response = client.get("/profile/memories")
+        assert memories_response.status_code == 200
+        memories = memories_response.json()
+        memory_categories = {memory["category"] for memory in memories}
+        memory_texts = [memory["content"] for memory in memories]
+
+        assert "goal" in memory_categories
+        assert "constraint" in memory_categories
+        assert "preference" in memory_categories
+        assert any("Focus on AI agent projects" in content for content in memory_texts)
+        assert any("Avoid meetings before 10am" in content for content in memory_texts)
+        assert any("prefer 1-hour focus blocks" in content.lower() for content in memory_texts)
+
+        preferences_response = client.get("/profile/preferences")
+        assert preferences_response.status_code == 200
+        preferences = preferences_response.json()
+        assert preferences["preferred_task_duration_hours"] == 1.7
+
     def test_ai_job_trace_records_planning_and_execution(self, monkeypatch):
         captured = {}
 
