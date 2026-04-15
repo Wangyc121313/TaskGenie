@@ -1,16 +1,15 @@
-"""
-数据模型定义 - 简化标签系统
-"""
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Union, Any, Literal
-from datetime import datetime, date
+from datetime import date, datetime
 from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
 
-# ===== 枚举定义 =====
+from pydantic import BaseModel
+
+
 class TaskStatus(str, Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+
 
 class AIJobStatus(str, Enum):
     PENDING = "pending"
@@ -18,7 +17,7 @@ class AIJobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
-# ===== 任务相关模型 =====
+
 class Task(BaseModel):
     id: Optional[str] = None
     name: str
@@ -31,6 +30,7 @@ class Task(BaseModel):
     estimated_hours: Optional[float] = None
     scheduled_date: Optional[date] = None
 
+
 class TaskCreate(BaseModel):
     name: str
     description: Optional[str] = ""
@@ -39,6 +39,7 @@ class TaskCreate(BaseModel):
     priority: Literal["low", "medium", "high"] = "medium"
     estimated_hours: Optional[float] = None
     scheduled_date: Optional[date] = None
+
 
 class TaskUpdate(BaseModel):
     name: Optional[str] = None
@@ -50,26 +51,56 @@ class TaskUpdate(BaseModel):
     estimated_hours: Optional[float] = None
     scheduled_date: Optional[date] = None
 
-# ===== AI相关模型 =====
+
 class AITaskRequest(BaseModel):
     prompt: str
     max_tasks: int = 5
 
+
 class AIScheduleRequest(BaseModel):
     task_ids: Optional[List[str]] = None
 
+
 class AIDayScheduleRequest(BaseModel):
-    date: str  # YYYY-MM-DD 格式
+    date: str
     task_ids: Optional[List[str]] = None
+
+
+class PlannedTask(BaseModel):
+    name: str
+    description: str
+    priority: Literal["low", "medium", "high"] = "medium"
+    estimated_hours: float = 2.0
+    due_date: Optional[datetime] = None
+
+
+class TaskPlanningResult(BaseModel):
+    project_theme: str
+    tasks: List[PlannedTask]
+
+
+class PlannedScheduleItem(BaseModel):
+    task_id: str
+    start_time: str
+    end_time: str
+    reason: str
+
+
+class DayScheduleGenerationResult(BaseModel):
+    schedule: List[PlannedScheduleItem]
+    suggestions: List[str] = []
+    efficiency_score: int = 8
+
 
 class TaskScheduleItem(BaseModel):
     task_id: str
     task_name: str
-    start_time: str  # HH:MM 格式
-    end_time: str    # HH:MM 格式
-    duration: float  # 小时
+    start_time: str
+    end_time: str
+    duration: float
     priority: str
-    reason: str      # AI安排的原因
+    reason: str
+
 
 class DaySchedule(BaseModel):
     id: Optional[str] = None
@@ -82,11 +113,13 @@ class DaySchedule(BaseModel):
     efficiency_score: int
     task_version: str
 
+
 class DayScheduleResponse(BaseModel):
     date: str
     has_schedule: bool
     schedule: Optional[DaySchedule] = None
     tasks_changed: bool = False
+
 
 class AIJob(BaseModel):
     job_id: str
@@ -95,7 +128,7 @@ class AIJob(BaseModel):
     result: Optional[Any] = None
     error: Optional[str] = None
 
-# ===== 响应模型 =====
+
 class TaskStatsResponse(BaseModel):
     total: int
     completed: int
@@ -105,6 +138,7 @@ class TaskStatsResponse(BaseModel):
     by_priority: Dict[str, int]
     by_status: Dict[str, int]
     by_tags: Dict[str, int]
+
 
 class TagsResponse(BaseModel):
     system_tags: List[str]
