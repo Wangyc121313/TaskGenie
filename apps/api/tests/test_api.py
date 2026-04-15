@@ -1,9 +1,13 @@
+import asyncio
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
 from app.db.database import db
 from app.main import app
+from app.models.schemas import AgentExecutionStatus, AIJob, AIJobStatus, PlannedTask, TaskPlanningResult
+from app.services.ai_service import AIService
+from app.services.task_planning_workflow import TaskPlanningWorkflow
 
 
 client = TestClient(app)
@@ -257,3 +261,192 @@ class TestTaskGenieAPI:
 
         delete_response = client.delete(f"/tasks/{created_task['id']}")
         assert delete_response.status_code == 200
+
+    def test_profile_preferences_update(self):
+        get_response = client.get("/profile/preferences")
+        assert get_response.status_code == 200
+        assert get_response.json()["planning_style"] == "balanced"
+
+        update_response = client.put(
+            "/profile/preferences",
+            json={
+                "display_name": "Yuchen",
+                "planning_style": "structured",
+                "peak_focus_period": "evening",
+                "avoid_time_ranges": ["13:00-14:00"],
+                "preferred_task_duration_hours": 1.5,
+            },
+        )
+        assert update_response.status_code == 200
+        data = update_response.json()
+        assert data["display_name"] == "Yuchen"
+        assert data["planning_style"] == "structured"
+        assert data["peak_focus_period"] == "evening"
+        assert data["avoid_time_ranges"] == ["13:00-14:00"]
+        assert data["preferred_task_duration_hours"] == 1.5
+
+    def test_profile_memory_crud_and_context_preview(self):
+        create_response = client.post(
+            "/profile/memories",
+            json={
+                "category": "constraint",
+                "content": "Avoid meetings before 10am when planning tasks.",
+                "tags": ["schedule", "morning"],
+            },
+        )
+        assert create_response.status_code == 200
+        memory = create_response.json()
+        assert memory["category"] == "constraint"
+        assert "id" in memory
+
+        list_response = client.get("/profile/memories")
+        assert list_response.status_code == 200
+        assert len(list_response.json()) == 1
+
+        context_response = client.get(
+            "/profile/planning-context",
+            params={"prompt": "Plan my morning schedule and focus work"},
+        )
+        assert context_response.status_code == 200
+        context_data = context_response.json()
+        assert "preferences" in context_data
+        assert len(context_data["relevant_memories"]) == 1
+        assert "Avoid meetings before 10am" in context_data["prompt_context"]
+
+        delete_response = client.delete(f"/profile/memories/{memory['id']}")
+        assert delete_response.status_code == 200
+        assert delete_response.json()["message"] == "Memory deleted."
+
+    def test_task_auto_extracts_memory_and_updates_preferences(self):
+        response = client.post(
+            "/tasks",
+            json={
+                "name": "Focus on AI agent projects this quarter",
+                "description": "Avoid meetings before 10am. I prefer 1-hour focus blocks.",
+                "priority": "high",
+                "estimated_hours": 1.0,
+            },
+        )
+        assert response.status_code == 200
+
+        memories_response = client.get("/profile/memories")
+        assert memories_response.status_code == 200
+        memories = memories_response.json()
+        memory_categories = {memory["category"] for memory in memories}
+        memory_texts = [memory["content"] for memory in memories]
+
+        assert "goal" in memory_categories
+        assert "constraint" in memory_categories
+        assert "preference" in memory_categories
+        assert any("Focus on AI agent projects" in content for content in memory_texts)
+        assert any("Avoid meetings before 10am" in content for content in memory_texts)
+        assert any("prefer 1-hour focus blocks" in content.lower() for content in memory_texts)
+
+        preferences_response = client.get("/profile/preferences")
+        assert preferences_response.status_code == 200
+        preferences = preferences_response.json()
+        assert preferences["preferred_task_duration_hours"] == 1.7
+
+    def test_ai_job_trace_records_planning_and_execution(self, monkeypatch):
+        captured = {}
+
+        client.put(
+            "/profile/preferences",
+            json={
+                "planning_style": "structured",
+                "priority_preference": "deadline_first",
+                "peak_focus_period": "morning",
+            },
+        )
+        client.post(
+            "/profile/memories",
+            json={
+                "category": "goal",
+                "content": "Focus on AI agent projects when planning technical work.",
+                "tags": ["ai", "career"],
+            },
+        )
+        self._create_task(
+            name="Existing high priority work",
+            priority="high",
+            estimated_hours=4.0,
+        )
+
+        def mock_plan_tasks(
+            prompt: str,
+            max_tasks: int,
+            task_type: str,
+            now: datetime,
+            planning_context: str = "",
+        ):
+            captured["planning_context"] = planning_context
+            return TaskPlanningResult(
+                project_theme="Agent Upgrade",
+                tasks=[
+                    PlannedTask(
+                        name="Design workflow trace",
+                        description="Persist planner and executor activity for every AI run.",
+                        priority="high",
+                        estimated_hours=2.0,
+                    ),
+                    PlannedTask(
+                        name="Expose trace in API",
+                        description="Return planned tasks, tool calls, and execution status in job responses.",
+                        priority="medium",
+                        estimated_hours=1.5,
+                    ),
+                ],
+            )
+
+        monkeypatch.setattr(TaskPlanningWorkflow, "plan_tasks", mock_plan_tasks)
+
+        job_id = "trace-job"
+        db.create_ai_job(
+            AIJob(
+                job_id=job_id,
+                status=AIJobStatus.PENDING,
+                created_at=datetime.now(),
+            )
+        )
+
+        asyncio.run(
+            AIService.process_task_planning(
+                job_id=job_id,
+                prompt="Develop an AI agent workflow for TaskGenie",
+                max_tasks=2,
+            )
+        )
+
+        job = db.get_ai_job(job_id)
+        assert job is not None
+        assert job.status == AIJobStatus.COMPLETED
+        assert job.trace is not None
+        assert job.trace.execution_status == AgentExecutionStatus.COMPLETED
+        assert job.trace.current_step == "completed"
+        assert job.trace.task_type == "development"
+        assert job.trace.project_theme == "Agent Upgrade"
+        assert job.trace.preference_snapshot is not None
+        assert job.trace.preference_snapshot.planning_style == "structured"
+        assert len(job.trace.relevant_memories) == 1
+        assert "AI agent projects" in job.trace.relevant_memories[0].content
+        assert "structured" in captured["planning_context"]
+        assert "AI agent projects" in captured["planning_context"]
+        assert "High-priority open tasks: 1." in captured["planning_context"]
+        assert len(job.trace.events) >= 6
+        assert job.trace.events[0].event_type == "memory_loaded"
+        assert job.trace.events[1].event_type == "planning_started"
+        assert job.trace.events[2].event_type == "planning_completed"
+        assert job.trace.events[3].event_type == "execution_started"
+        assert job.trace.events[-1].event_type == "run_completed"
+        assert job.trace.events[-1].metadata["created_task_count"] == 2
+        assert len(job.trace.planned_tasks) == 2
+        assert len(job.trace.tool_calls) == 2
+        assert len(job.trace.created_tasks) == 2
+        assert all(tool_call.status == "completed" for tool_call in job.trace.tool_calls)
+        assert all(tool_call.output is not None for tool_call in job.trace.tool_calls)
+        completed_tool_events = [
+            event for event in job.trace.events if event.event_type == "tool_completed"
+        ]
+        assert len(completed_tool_events) == 2
+        assert isinstance(job.result, list)
+        assert len(job.result) == 2

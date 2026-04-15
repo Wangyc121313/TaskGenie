@@ -134,6 +134,7 @@ async def test_ai_planning(prompt: str = "Learn React Native", max_tasks: int = 
                 "success": True,
                 "tasks_created": len(job.result) if job.result else 0,
                 "tasks": job.result,
+                "trace": job.trace.model_dump(mode="json") if job.trace else None,
             }
         return {"success": False, "error": job.error}
     except Exception as exc:

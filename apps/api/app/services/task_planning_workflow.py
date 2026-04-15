@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List
+from typing import Any, Callable, Dict, List, Optional
 
 from app.models.schemas import PlannedTask, Task, TaskCreate, TaskPlanningResult
 from app.services.llm_service import LLMService
@@ -10,11 +10,21 @@ from app.services.tool_registry import task_tool_registry
 @dataclass
 class PlannedToolCall:
     tool_name: str
-    task_data: TaskCreate
+    arguments: Dict[str, Any]
+
+    def to_trace_payload(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        for key, value in self.arguments.items():
+            if hasattr(value, "model_dump"):
+                payload[key] = value.model_dump(mode="json")
+            else:
+                payload[key] = value
+        return payload
 
 
 @dataclass
 class WorkflowRunResult:
+    task_type: str
     project_theme: str
     planned_tasks: List[PlannedTask]
     created_tasks: List[Task]
@@ -23,12 +33,50 @@ class WorkflowRunResult:
 
 class TaskPlanningWorkflow:
     @staticmethod
-    def run(prompt: str, max_tasks: int, task_type: str, now: datetime) -> WorkflowRunResult:
+    def run(
+        prompt: str,
+        max_tasks: int,
+        task_type: str,
+        now: datetime,
+        planning_context: Optional[str] = None,
+    ) -> WorkflowRunResult:
+        planning_result = TaskPlanningWorkflow.plan_tasks(
+            prompt=prompt,
+            max_tasks=max_tasks,
+            task_type=task_type,
+            now=now,
+            planning_context=planning_context,
+        )
+        tool_calls = TaskPlanningWorkflow.build_execution_plan(
+            planned_tasks=planning_result.tasks,
+            project_theme=planning_result.project_theme,
+            max_tasks=max_tasks,
+            now=now,
+        )
+        created_tasks = TaskPlanningWorkflow.execute_plan(tool_calls)
+
+        return WorkflowRunResult(
+            task_type=task_type,
+            project_theme=planning_result.project_theme,
+            planned_tasks=planning_result.tasks,
+            created_tasks=created_tasks,
+            tool_calls=tool_calls,
+        )
+
+    @staticmethod
+    def plan_tasks(
+        prompt: str,
+        max_tasks: int,
+        task_type: str,
+        now: datetime,
+        planning_context: Optional[str] = None,
+    ) -> TaskPlanningResult:
         planning_result = LLMService.generate_structured_output(
             system_prompt=TaskPlanningWorkflow._build_planner_prompt(
                 task_type=task_type,
                 max_tasks=max_tasks,
                 now=now,
+                planning_context=planning_context,
             ),
             user_prompt=f"User goal:\n{prompt}",
             response_model=TaskPlanningResult,
@@ -39,27 +87,28 @@ class TaskPlanningWorkflow:
         if not planning_result.tasks:
             raise ValueError("AI did not return any tasks")
 
-        tool_calls = TaskPlanningWorkflow._build_execution_plan(
-            planned_tasks=planning_result.tasks,
-            project_theme=planning_result.project_theme,
-            max_tasks=max_tasks,
-            now=now,
-        )
-        created_tasks = TaskPlanningWorkflow._execute_plan(tool_calls)
-
-        return WorkflowRunResult(
-            project_theme=planning_result.project_theme,
-            planned_tasks=planning_result.tasks,
-            created_tasks=created_tasks,
-            tool_calls=tool_calls,
-        )
+        return planning_result
 
     @staticmethod
-    def _build_planner_prompt(task_type: str, max_tasks: int, now: datetime) -> str:
+    def _build_planner_prompt(
+        task_type: str,
+        max_tasks: int,
+        now: datetime,
+        planning_context: Optional[str] = None,
+    ) -> str:
+        context_block = ""
+        if planning_context:
+            context_block = (
+                "\nUse this user preference and memory context when deciding task breakdown, "
+                "estimated effort, and due dates:\n"
+                f"{planning_context}\n"
+            )
+
         return f"""
 You are an AI planning assistant for a task management product.
 Current time: {now.isoformat(timespec="minutes")}
 Task type: {task_type}
+{context_block}
 
 First think like a planner. Break the user's goal into actionable tasks.
 Return exactly one JSON object that matches this schema:
@@ -85,7 +134,7 @@ Requirements:
 """.strip()
 
     @staticmethod
-    def _build_execution_plan(
+    def build_execution_plan(
         *,
         planned_tasks: List[PlannedTask],
         project_theme: str,
@@ -98,46 +147,62 @@ Requirements:
             tool_calls.append(
                 PlannedToolCall(
                     tool_name="create_task",
-                    task_data=TaskCreate(
-                        name=TaskPlanningWorkflow._normalize_task_name(
-                            project_theme=project_theme,
-                            step_index=index,
-                            task_name=planned_task.name,
-                        ),
-                        description=TaskPlanningWorkflow._normalize_description(
-                            planned_task.description
-                        ),
-                        priority=planned_task.priority,
-                        estimated_hours=max(
-                            0.5,
-                            min(6.0, float(planned_task.estimated_hours or 2.0)),
-                        ),
-                        due_date=planned_task.due_date
-                        or TaskPlanningWorkflow._infer_due_date(
-                            base_time=now,
+                    arguments={
+                        "task_data": TaskCreate(
+                            name=TaskPlanningWorkflow._normalize_task_name(
+                                project_theme=project_theme,
+                                step_index=index,
+                                task_name=planned_task.name,
+                            ),
+                            description=TaskPlanningWorkflow._normalize_description(
+                                planned_task.description
+                            ),
                             priority=planned_task.priority,
-                            index=index,
-                        ),
-                    ),
+                            estimated_hours=max(
+                                0.5,
+                                min(6.0, float(planned_task.estimated_hours or 2.0)),
+                            ),
+                            due_date=planned_task.due_date
+                            or TaskPlanningWorkflow._infer_due_date(
+                                base_time=now,
+                                priority=planned_task.priority,
+                                index=index,
+                            ),
+                        )
+                    },
                 )
             )
 
         return tool_calls
 
     @staticmethod
-    def _execute_plan(tool_calls: List[PlannedToolCall]) -> List[Task]:
+    def execute_plan(
+        tool_calls: List[PlannedToolCall],
+        on_step: Optional[
+            Callable[[int, PlannedToolCall, Optional[Task], Optional[Exception]], None]
+        ] = None,
+    ) -> List[Task]:
         created_tasks: List[Task] = []
-        for tool_call in tool_calls:
-            result = task_tool_registry.execute(
-                tool_call.tool_name,
-                task_data=tool_call.task_data,
-            )
+        for index, tool_call in enumerate(tool_calls):
+            try:
+                result = task_tool_registry.execute(
+                    tool_call.tool_name,
+                    **tool_call.arguments,
+                )
+            except Exception as exc:
+                if on_step:
+                    on_step(index, tool_call, None, exc)
+                raise
+
             created_tasks.append(result)
+            if on_step:
+                on_step(index, tool_call, result, None)
+
         return created_tasks
 
     @staticmethod
     def _normalize_task_name(project_theme: str, step_index: int, task_name: str) -> str:
-        name = task_name.strip() or f"完成步骤 {step_index}"
+        name = task_name.strip() or f"Complete step {step_index}"
         return f"{project_theme} Step{step_index}: {name}"
 
     @staticmethod
@@ -145,7 +210,9 @@ Requirements:
         description = (description or "").strip()
         if len(description) >= 20:
             return description
-        return f"{description}。请补充清晰的执行步骤、验收标准和产出物。"
+        if description:
+            return f"{description}. Add concrete execution steps, acceptance criteria, and expected output."
+        return "Add concrete execution steps, acceptance criteria, and expected output."
 
     @staticmethod
     def _infer_due_date(base_time: datetime, priority: str, index: int) -> datetime:
