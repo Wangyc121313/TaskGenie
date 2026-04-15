@@ -1,5 +1,7 @@
 from app.models.schemas import (
     AIDayScheduleRequest,
+    AgentExecutionStatus,
+    AgentToolCallTrace,
     AIJob,
     AIJobStatus,
     AIScheduleRequest,
@@ -12,6 +14,7 @@ from app.models.schemas import (
     TagsResponse,
     Task,
     TaskCreate,
+    TaskPlanningTrace,
     TaskPlanningResult,
     TaskScheduleItem,
     TaskStatsResponse,
@@ -21,6 +24,8 @@ from app.models.schemas import (
 
 __all__ = [
     "AIDayScheduleRequest",
+    "AgentExecutionStatus",
+    "AgentToolCallTrace",
     "AIJob",
     "AIJobStatus",
     "AIScheduleRequest",
@@ -33,6 +38,7 @@ __all__ = [
     "TagsResponse",
     "Task",
     "TaskCreate",
+    "TaskPlanningTrace",
     "TaskPlanningResult",
     "TaskScheduleItem",
     "TaskStatsResponse",

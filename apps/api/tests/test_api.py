@@ -1,9 +1,13 @@
+import asyncio
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
 from app.db.database import db
 from app.main import app
+from app.models.schemas import AIJob, AIJobStatus, PlannedTask, TaskPlanningResult
+from app.services.ai_service import AIService
+from app.services.task_planning_workflow import TaskPlanningWorkflow
 
 
 client = TestClient(app)
@@ -257,3 +261,58 @@ class TestTaskGenieAPI:
 
         delete_response = client.delete(f"/tasks/{created_task['id']}")
         assert delete_response.status_code == 200
+
+    def test_ai_job_trace_records_planning_and_execution(self, monkeypatch):
+        def mock_plan_tasks(prompt: str, max_tasks: int, task_type: str, now: datetime):
+            return TaskPlanningResult(
+                project_theme="Agent Upgrade",
+                tasks=[
+                    PlannedTask(
+                        name="Design workflow trace",
+                        description="Persist planner and executor activity for every AI run.",
+                        priority="high",
+                        estimated_hours=2.0,
+                    ),
+                    PlannedTask(
+                        name="Expose trace in API",
+                        description="Return planned tasks, tool calls, and execution status in job responses.",
+                        priority="medium",
+                        estimated_hours=1.5,
+                    ),
+                ],
+            )
+
+        monkeypatch.setattr(TaskPlanningWorkflow, "plan_tasks", mock_plan_tasks)
+
+        job_id = "trace-job"
+        db.create_ai_job(
+            AIJob(
+                job_id=job_id,
+                status=AIJobStatus.PENDING,
+                created_at=datetime.now(),
+            )
+        )
+
+        asyncio.run(
+            AIService.process_task_planning(
+                job_id=job_id,
+                prompt="Develop an AI agent workflow for TaskGenie",
+                max_tasks=2,
+            )
+        )
+
+        job = db.get_ai_job(job_id)
+        assert job is not None
+        assert job.status == AIJobStatus.COMPLETED
+        assert job.trace is not None
+        assert job.trace.execution_status == "completed"
+        assert job.trace.current_step == "completed"
+        assert job.trace.task_type == "development"
+        assert job.trace.project_theme == "Agent Upgrade"
+        assert len(job.trace.planned_tasks) == 2
+        assert len(job.trace.tool_calls) == 2
+        assert len(job.trace.created_tasks) == 2
+        assert all(tool_call.status == "completed" for tool_call in job.trace.tool_calls)
+        assert all(tool_call.output is not None for tool_call in job.trace.tool_calls)
+        assert isinstance(job.result, list)
+        assert len(job.result) == 2

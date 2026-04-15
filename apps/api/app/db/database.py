@@ -6,10 +6,21 @@ import json
 from typing import List, Optional
 from datetime import datetime, date
 
-from sqlalchemy import create_engine, Column, String, Boolean, Float, DateTime, Date, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    String,
+    Text,
+    create_engine,
+    inspect,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 
-from app.models.schemas import Task, AIJob, AIJobStatus, DaySchedule, TaskStatus
+from app.models.schemas import AIJob, AIJobStatus, DaySchedule, Task, TaskStatus
 
 # ===== SQLAlchemy 配置 =====
 DATABASE_URL = "sqlite:///./taskgenie.db"
@@ -40,6 +51,7 @@ class AIJobORM(Base):
     created_at = Column(DateTime)
     result     = Column(Text, nullable=True)   # JSON string
     error      = Column(Text, nullable=True)
+    trace      = Column(Text, nullable=True)
 
 class DayScheduleORM(Base):
     __tablename__ = "day_schedules"
@@ -48,6 +60,18 @@ class DayScheduleORM(Base):
 
 # 建表（首次运行时自动创建）
 Base.metadata.create_all(bind=engine)
+
+
+def _ensure_schema_compatibility() -> None:
+    inspector = inspect(engine)
+    ai_job_columns = {column["name"] for column in inspector.get_columns("ai_jobs")}
+
+    if "trace" not in ai_job_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE ai_jobs ADD COLUMN trace TEXT"))
+
+
+_ensure_schema_compatibility()
 
 
 # ===== 转换工具 =====
@@ -67,12 +91,14 @@ def _task_orm_to_pydantic(row: TaskORM) -> Task:
 
 def _aijob_orm_to_pydantic(row: AIJobORM) -> AIJob:
     result = json.loads(row.result) if row.result else None
+    trace = row.trace if hasattr(row, "trace") else None
     return AIJob(
         job_id=row.job_id,
         status=AIJobStatus(row.status),
         created_at=row.created_at,
         result=result,
         error=row.error,
+        trace=json.loads(trace) if trace else None,
     )
 
 
@@ -156,6 +182,7 @@ class SQLiteDatabase:
                 created_at=job.created_at,
                 result=json.dumps(job.result, default=str) if job.result is not None else None,
                 error=job.error,
+                trace=job.trace.model_dump_json() if job.trace is not None else None,
             )
             session.add(row)
             session.commit()
@@ -174,6 +201,7 @@ class SQLiteDatabase:
             row.status = job.status.value if hasattr(job.status, 'value') else job.status
             row.result = json.dumps(job.result, default=str) if job.result is not None else None
             row.error  = job.error
+            row.trace = job.trace.model_dump_json() if job.trace is not None else None
             session.commit()
         return job
 

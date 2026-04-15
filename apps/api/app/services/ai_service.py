@@ -6,9 +6,12 @@ from typing import List, Optional
 from app.db.database import db
 from app.models.schemas import (
     AIJobStatus,
+    AgentExecutionStatus,
+    AgentToolCallTrace,
     DaySchedule,
     DayScheduleGenerationResult,
     Task,
+    TaskPlanningTrace,
     TaskScheduleItem,
 )
 from app.services.llm_service import LLMService
@@ -18,25 +21,90 @@ from app.services.task_planning_workflow import TaskPlanningWorkflow
 class AIService:
     @staticmethod
     async def process_task_planning(job_id: str, prompt: str, max_tasks: int):
+        trace: Optional[TaskPlanningTrace] = None
         try:
             now = datetime.now()
             task_type = AIService._analyze_task_type(prompt)
-            workflow_result = TaskPlanningWorkflow.run(
+            trace = TaskPlanningTrace(
+                execution_status=AgentExecutionStatus.PLANNING,
+                current_step="planning",
+                task_type=task_type,
+                started_at=now,
+            )
+            AIService._update_job_state(
+                job_id,
+                status=AIJobStatus.PROCESSING,
+                trace=trace,
+                error=None,
+            )
+
+            planning_result = TaskPlanningWorkflow.plan_tasks(
                 prompt=prompt,
                 max_tasks=max_tasks,
                 task_type=task_type,
                 now=now,
             )
+            trace.project_theme = planning_result.project_theme
+            trace.planned_tasks = planning_result.tasks
 
-            job = db.get_ai_job(job_id)
-            job.status = AIJobStatus.COMPLETED
-            job.result = [task.model_dump() for task in workflow_result.created_tasks]
-            db.update_ai_job(job_id, job)
+            tool_calls = TaskPlanningWorkflow.build_execution_plan(
+                planned_tasks=planning_result.tasks,
+                project_theme=planning_result.project_theme,
+                max_tasks=max_tasks,
+                now=now,
+            )
+            trace.execution_status = AgentExecutionStatus.EXECUTING
+            trace.current_step = "executing"
+            trace.tool_calls = [
+                AgentToolCallTrace(
+                    tool_name=tool_call.tool_name,
+                    arguments=tool_call.to_trace_payload(),
+                )
+                for tool_call in tool_calls
+            ]
+            AIService._update_job_state(
+                job_id,
+                status=AIJobStatus.PROCESSING,
+                trace=trace,
+            )
+
+            created_tasks = TaskPlanningWorkflow.execute_plan(
+                tool_calls,
+                on_step=lambda index, _tool_call, result, error: AIService._record_tool_step(
+                    job_id=job_id,
+                    trace=trace,
+                    index=index,
+                    result=result,
+                    error=error,
+                ),
+            )
+            trace.created_tasks = created_tasks
+            trace.execution_status = AgentExecutionStatus.COMPLETED
+            trace.current_step = "completed"
+            trace.finished_at = datetime.now()
+
+            AIService._update_job_state(
+                job_id,
+                status=AIJobStatus.COMPLETED,
+                result=[task.model_dump(mode="json") for task in created_tasks],
+                trace=trace,
+                error=None,
+            )
         except Exception as exc:
-            job = db.get_ai_job(job_id)
-            job.status = AIJobStatus.FAILED
-            job.error = f"AI任务规划失败: {exc}"
-            db.update_ai_job(job_id, job)
+            failed_trace = trace or TaskPlanningTrace(
+                execution_status=AgentExecutionStatus.FAILED,
+                current_step="failed",
+                started_at=datetime.now(),
+            )
+            failed_trace.execution_status = AgentExecutionStatus.FAILED
+            failed_trace.current_step = "failed"
+            failed_trace.finished_at = datetime.now()
+            AIService._update_job_state(
+                job_id,
+                status=AIJobStatus.FAILED,
+                trace=failed_trace,
+                error=f"AI task planning failed: {exc}",
+            )
 
     @staticmethod
     async def process_day_schedule(
@@ -64,7 +132,7 @@ class AIService:
                     created_at=datetime.now(),
                     updated_at=datetime.now(),
                     schedule_items=[],
-                    suggestions=["今天没有安排任务，可以休息或处理其他事项"],
+                    suggestions=["No tasks are scheduled for this day yet."],
                     total_hours=0,
                     efficiency_score=10,
                     task_version="",
@@ -76,7 +144,7 @@ class AIService:
                 job.result = {
                     "date": date_str,
                     "has_schedule": True,
-                    "schedule": empty_schedule.model_dump(),
+                    "schedule": empty_schedule.model_dump(mode="json"),
                     "tasks_changed": False,
                 }
                 db.update_ai_job(job_id, job)
@@ -91,7 +159,7 @@ class AIService:
                     job.result = {
                         "date": date_str,
                         "has_schedule": True,
-                        "schedule": existing_schedule.model_dump(),
+                        "schedule": existing_schedule.model_dump(mode="json"),
                         "tasks_changed": False,
                     }
                     db.update_ai_job(job_id, job)
@@ -118,7 +186,7 @@ class AIService:
             job.result = {
                 "date": date_str,
                 "has_schedule": True,
-                "schedule": day_schedule.model_dump(),
+                "schedule": day_schedule.model_dump(mode="json"),
                 "tasks_changed": False,
             }
             db.update_ai_job(job_id, job)
@@ -159,13 +227,25 @@ Guidelines:
     @staticmethod
     def _analyze_task_type(prompt: str) -> str:
         prompt_analysis = prompt.lower()
-        if any(keyword in prompt_analysis for keyword in ["学习", "掌握", "了解", "研究"]):
+        if any(
+            keyword in prompt_analysis
+            for keyword in ["study", "learn", "research", "学习", "掌握", "研究"]
+        ):
             return "learning"
-        if any(keyword in prompt_analysis for keyword in ["开发", "编程", "制作", "创建", "设计"]):
+        if any(
+            keyword in prompt_analysis
+            for keyword in ["build", "develop", "design", "implement", "开发", "设计", "实现", "制作"]
+        ):
             return "development"
-        if any(keyword in prompt_analysis for keyword in ["准备", "策划", "组织", "安排"]):
+        if any(
+            keyword in prompt_analysis
+            for keyword in ["plan", "organize", "arrange", "计划", "整理", "安排"]
+        ):
             return "planning"
-        if any(keyword in prompt_analysis for keyword in ["写", "撰写", "完成", "提交"]):
+        if any(
+            keyword in prompt_analysis
+            for keyword in ["write", "draft", "submit", "写", "撰写", "提交"]
+        ):
             return "writing"
         return "general"
 
@@ -225,7 +305,7 @@ Guidelines:
                     end_time=item.end_time,
                     duration=duration,
                     priority=task.priority,
-                    reason=item.reason or "根据优先级和可用时间安排",
+                    reason=item.reason or "Scheduled based on priority and available time.",
                 )
             )
 
@@ -235,3 +315,65 @@ Guidelines:
             "total_hours": total_hours,
             "efficiency_score": llm_result.efficiency_score,
         }
+
+    @staticmethod
+    def _record_tool_step(
+        *,
+        job_id: str,
+        trace: TaskPlanningTrace,
+        index: int,
+        result: Optional[Task],
+        error: Optional[Exception],
+    ) -> None:
+        tool_call = trace.tool_calls[index]
+        if error is not None:
+            tool_call.status = "failed"
+            tool_call.error = str(error)
+            trace.execution_status = AgentExecutionStatus.FAILED
+            trace.current_step = "failed"
+        else:
+            tool_call.status = "completed"
+            tool_call.output = (
+                {
+                    "task_id": result.id,
+                    "task_name": result.name,
+                }
+                if result is not None
+                else None
+            )
+            if result is not None:
+                trace.created_tasks = [
+                    current_task
+                    for current_task in trace.created_tasks
+                    if current_task.id != result.id
+                ]
+                trace.created_tasks.append(result)
+
+        AIService._update_job_state(
+            job_id,
+            status=AIJobStatus.PROCESSING if error is None else AIJobStatus.FAILED,
+            trace=trace,
+        )
+
+    @staticmethod
+    def _update_job_state(
+        job_id: str,
+        *,
+        status: AIJobStatus,
+        trace: Optional[TaskPlanningTrace] = None,
+        result=None,
+        error: Optional[str] = None,
+    ) -> None:
+        job = db.get_ai_job(job_id)
+        if not job:
+            return
+
+        job.status = status
+        if trace is not None:
+            job.trace = trace
+        if result is not None:
+            job.result = result
+        if error is not None or status != AIJobStatus.FAILED:
+            job.error = error
+
+        db.update_ai_job(job_id, job)

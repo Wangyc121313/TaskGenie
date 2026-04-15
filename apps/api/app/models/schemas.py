@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(str, Enum):
@@ -14,6 +14,14 @@ class TaskStatus(str, Enum):
 class AIJobStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AgentExecutionStatus(str, Enum):
+    PENDING = "pending"
+    PLANNING = "planning"
+    EXECUTING = "executing"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -88,8 +96,28 @@ class PlannedScheduleItem(BaseModel):
 
 class DayScheduleGenerationResult(BaseModel):
     schedule: List[PlannedScheduleItem]
-    suggestions: List[str] = []
+    suggestions: List[str] = Field(default_factory=list)
     efficiency_score: int = 8
+
+
+class AgentToolCallTrace(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    status: Literal["pending", "completed", "failed"] = "pending"
+    output: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class TaskPlanningTrace(BaseModel):
+    execution_status: AgentExecutionStatus = AgentExecutionStatus.PENDING
+    current_step: str = "queued"
+    task_type: Optional[str] = None
+    project_theme: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    planned_tasks: List[PlannedTask] = Field(default_factory=list)
+    tool_calls: List[AgentToolCallTrace] = Field(default_factory=list)
+    created_tasks: List[Task] = Field(default_factory=list)
 
 
 class TaskScheduleItem(BaseModel):
@@ -127,6 +155,7 @@ class AIJob(BaseModel):
     created_at: datetime
     result: Optional[Any] = None
     error: Optional[str] = None
+    trace: Optional[TaskPlanningTrace] = None
 
 
 class TaskStatsResponse(BaseModel):
