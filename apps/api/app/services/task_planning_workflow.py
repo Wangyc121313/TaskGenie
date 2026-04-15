@@ -33,12 +33,19 @@ class WorkflowRunResult:
 
 class TaskPlanningWorkflow:
     @staticmethod
-    def run(prompt: str, max_tasks: int, task_type: str, now: datetime) -> WorkflowRunResult:
+    def run(
+        prompt: str,
+        max_tasks: int,
+        task_type: str,
+        now: datetime,
+        planning_context: Optional[str] = None,
+    ) -> WorkflowRunResult:
         planning_result = TaskPlanningWorkflow.plan_tasks(
             prompt=prompt,
             max_tasks=max_tasks,
             task_type=task_type,
             now=now,
+            planning_context=planning_context,
         )
         tool_calls = TaskPlanningWorkflow.build_execution_plan(
             planned_tasks=planning_result.tasks,
@@ -57,12 +64,19 @@ class TaskPlanningWorkflow:
         )
 
     @staticmethod
-    def plan_tasks(prompt: str, max_tasks: int, task_type: str, now: datetime) -> TaskPlanningResult:
+    def plan_tasks(
+        prompt: str,
+        max_tasks: int,
+        task_type: str,
+        now: datetime,
+        planning_context: Optional[str] = None,
+    ) -> TaskPlanningResult:
         planning_result = LLMService.generate_structured_output(
             system_prompt=TaskPlanningWorkflow._build_planner_prompt(
                 task_type=task_type,
                 max_tasks=max_tasks,
                 now=now,
+                planning_context=planning_context,
             ),
             user_prompt=f"User goal:\n{prompt}",
             response_model=TaskPlanningResult,
@@ -76,11 +90,25 @@ class TaskPlanningWorkflow:
         return planning_result
 
     @staticmethod
-    def _build_planner_prompt(task_type: str, max_tasks: int, now: datetime) -> str:
+    def _build_planner_prompt(
+        task_type: str,
+        max_tasks: int,
+        now: datetime,
+        planning_context: Optional[str] = None,
+    ) -> str:
+        context_block = ""
+        if planning_context:
+            context_block = (
+                "\nUse this user preference and memory context when deciding task breakdown, "
+                "estimated effort, and due dates:\n"
+                f"{planning_context}\n"
+            )
+
         return f"""
 You are an AI planning assistant for a task management product.
 Current time: {now.isoformat(timespec="minutes")}
 Task type: {task_type}
+{context_block}
 
 First think like a planner. Break the user's goal into actionable tasks.
 Return exactly one JSON object that matches this schema:

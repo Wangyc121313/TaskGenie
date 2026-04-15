@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import current_settings
-from app.routers import ai_router, general_router, task_router
+from app.routers import ai_router, general_router, profile_router, task_router
 
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
 
     app.include_router(task_router)
     app.include_router(ai_router)
+    app.include_router(profile_router)
     app.include_router(general_router)
 
     @app.get("/")

@@ -16,6 +16,7 @@ from app.models.schemas import (
     TaskScheduleItem,
 )
 from app.services.llm_service import LLMService
+from app.services.memory_service import MemoryService
 from app.services.task_planning_workflow import TaskPlanningWorkflow
 
 
@@ -31,6 +32,20 @@ class AIService:
                 current_step="planning",
                 task_type=task_type,
                 started_at=now,
+            )
+            planning_context = MemoryService.build_planning_context(prompt=prompt)
+            trace.preference_snapshot = planning_context.preferences
+            trace.relevant_memories = planning_context.relevant_memories
+            trace.behavior_summary = planning_context.behavior_summary
+            AIService._append_trace_event(
+                trace,
+                event_type="memory_loaded",
+                stage="context",
+                message="Loaded user preferences and relevant memories.",
+                metadata={
+                    "memory_count": len(planning_context.relevant_memories),
+                    "planning_style": planning_context.preferences.planning_style,
+                },
             )
             AIService._append_trace_event(
                 trace,
@@ -54,6 +69,7 @@ class AIService:
                 max_tasks=max_tasks,
                 task_type=task_type,
                 now=now,
+                planning_context=planning_context.prompt_context,
             )
             trace.project_theme = planning_result.project_theme
             trace.planned_tasks = planning_result.tasks
