@@ -1,21 +1,63 @@
 import base64
-import uuid
 from datetime import datetime
+from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
+from app.agent.runtime import AgentRuntime
 from app.core.config import current_settings
 from app.db.database import db
-from app.models import AIDayScheduleRequest, AIImageTaskRequest, AIJob, AIJobStatus, AITaskRequest
+from app.models import (
+    AIDayScheduleRequest,
+    AIImageTaskRequest,
+    AIJob,
+    AIJobStatus,
+    AITaskRequest,
+    AgentRunRequest,
+    ToolDefinitionSchema,
+)
+from app.models.schemas import AgentRunMode, AgentRunResponse
 from app.services.ai_service import AIService
+from app.services.tool_registry import task_tool_registry
 
 
 ai_router = APIRouter(prefix="/ai", tags=["ai"])
 
 
+@ai_router.post("/agent/run", response_model=AgentRunResponse)
+async def run_agent(request: AgentRunRequest):
+    job = AgentRuntime.create_job()
+    await AgentRuntime.run(job.job_id, request)
+    return AgentRuntime.get_response(job.job_id)
+
+
+@ai_router.get("/agent/runs/{job_id}", response_model=AgentRunResponse)
+async def get_agent_run(job_id: str):
+    try:
+        return AgentRuntime.get_response(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Agent run not found.") from exc
+
+
+@ai_router.post("/agent/runs/{job_id}/confirm", response_model=AgentRunResponse)
+async def confirm_agent_run(job_id: str):
+    try:
+        AgentRuntime.confirm(job_id)
+        return AgentRuntime.get_response(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Agent run not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@ai_router.get("/agent/tools", response_model=list[ToolDefinitionSchema])
+async def list_agent_tools():
+    return [definition.to_schema() for definition in task_tool_registry.list_tools()]
+
+
 @ai_router.post("/plan-tasks/async")
 async def ai_plan_tasks_async(request: AITaskRequest, background_tasks: BackgroundTasks):
-    job_id = str(uuid.uuid4())
+    job_id = str(uuid4())
     job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
     db.create_ai_job(job)
 
@@ -31,16 +73,13 @@ async def ai_plan_tasks_async(request: AITaskRequest, background_tasks: Backgrou
 
 
 @ai_router.post("/plan-image/async")
-async def ai_plan_image_async(
-    background_tasks: BackgroundTasks,
-    request: AIImageTaskRequest,
-):
+async def ai_plan_image_async(background_tasks: BackgroundTasks, request: AIImageTaskRequest):
     image_bytes = _decode_and_validate_image(
         image_base64=request.image_base64,
         content_type=request.image_mime_type,
     )
 
-    job_id = str(uuid.uuid4())
+    job_id = str(uuid4())
     job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
     db.create_ai_job(job)
 
@@ -67,7 +106,7 @@ async def ai_plan_image_async(
 async def get_ai_job_status(job_id: str):
     job = db.get_ai_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="任务不存在")
+        raise HTTPException(status_code=404, detail="Job not found.")
     return job
 
 
@@ -77,10 +116,9 @@ async def ai_schedule_day_async(
     background_tasks: BackgroundTasks,
     force_regenerate: bool = False,
 ):
-    job_id = str(uuid.uuid4())
+    job_id = str(uuid4())
     job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
     db.create_ai_job(job)
-
     background_tasks.add_task(
         AIService.process_day_schedule,
         job_id,
@@ -96,14 +134,16 @@ async def get_day_schedule(date: str):
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="日期格式错误，请使用YYYY-MM-DD格式") from exc
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
 
     schedule = db.get_day_schedule(date)
     if not schedule:
         return {"date": date, "has_schedule": False, "schedule": None, "tasks_changed": False}
 
+    from app.agent.planner import AgentPlanner
+
     current_tasks = db.get_tasks_for_date(target_date)
-    current_version = AIService._generate_task_version(current_tasks)
+    current_version = AgentPlanner.generate_task_version(current_tasks)
     return {
         "date": date,
         "has_schedule": True,
@@ -116,8 +156,8 @@ async def get_day_schedule(date: str):
 async def delete_day_schedule(date: str):
     success = db.delete_day_schedule(date)
     if not success:
-        raise HTTPException(status_code=404, detail="该日期没有安排")
-    return {"message": "安排已删除"}
+        raise HTTPException(status_code=404, detail="No saved schedule exists for this date.")
+    return {"message": "Schedule deleted."}
 
 
 @ai_router.get("/schedule-day/{date}")
@@ -125,7 +165,7 @@ async def get_day_schedule_preview(date: str):
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="日期格式错误，请使用YYYY-MM-DD格式") from exc
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
 
     day_tasks = db.get_tasks_for_date(target_date)
     total_estimated_hours = sum(task.estimated_hours or 2.0 for task in day_tasks)
@@ -155,25 +195,17 @@ async def get_day_schedule_preview(date: str):
 
 @ai_router.post("/plan-tasks/test")
 async def test_ai_planning(prompt: str = "Learn React Native", max_tasks: int = 3):
-    job_id = str(uuid.uuid4())
-    job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
-    db.create_ai_job(job)
-
-    try:
-        await AIService.process_task_planning(job_id, prompt, max_tasks)
-        job = db.get_ai_job(job_id)
-        if not job:
-            return {"success": False, "error": "作业未找到"}
-        if job.status == AIJobStatus.COMPLETED:
-            return {
-                "success": True,
-                "tasks_created": len(job.result) if job.result else 0,
-                "tasks": job.result,
-                "trace": job.trace.model_dump(mode="json") if job.trace else None,
-            }
-        return {"success": False, "error": job.error}
-    except Exception as exc:
-        return {"success": False, "error": str(exc)}
+    job = AgentRuntime.create_job()
+    await AgentRuntime.run(
+        job.job_id,
+        AgentRunRequest(
+            mode=AgentRunMode.TEXT_GOAL,
+            prompt=prompt,
+            max_tasks=max_tasks,
+            auto_execute=True,
+        ),
+    )
+    return AgentRuntime.get_response(job.job_id).model_dump(mode="json")
 
 
 @ai_router.post("/plan-image/test")
@@ -187,40 +219,31 @@ async def sync_ai_image_planning(request: AIImageTaskRequest):
 
 
 async def _run_image_planning_sync(request: AIImageTaskRequest):
-    image_bytes = _decode_and_validate_image(
-        image_base64=request.image_base64,
-        content_type=request.image_mime_type,
-    )
-
-    job_id = str(uuid.uuid4())
-    job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
-    db.create_ai_job(job)
-
-    try:
-        await AIService.process_image_task_planning(
-            job_id,
-            image_bytes=image_bytes,
+    job = AgentRuntime.create_job()
+    await AgentRuntime.run(
+        job.job_id,
+        AgentRunRequest(
+            mode=AgentRunMode.IMAGE_GOAL,
+            image_base64=request.image_base64,
             image_mime_type=request.image_mime_type,
             filename=request.filename or "upload-image",
             notes=request.notes,
             max_tasks=max(0, min(10, request.max_tasks)),
-            auto_create=request.auto_create,
-        )
-        job = db.get_ai_job(job_id)
-        if not job:
-            return {"success": False, "error": "Job not found."}
-        if job.status == AIJobStatus.COMPLETED:
-            result = job.result or {}
-            return {
-                "success": True,
-                "task_candidates": result.get("task_candidates", []),
-                "created_tasks": result.get("created_tasks", []),
-                "scene_summary": result.get("scene_summary"),
-                "trace": job.trace.model_dump(mode="json") if job.trace else None,
-            }
-        return {"success": False, "error": job.error}
-    except Exception as exc:
-        return {"success": False, "error": str(exc)}
+            auto_execute=request.auto_create,
+        ),
+    )
+    response = AgentRuntime.get_response(job.job_id)
+    stored_job = db.get_ai_job(response.job_id)
+    return {
+        "success": response.status in {AIJobStatus.AWAITING_CONFIRMATION, AIJobStatus.COMPLETED},
+        "job_id": response.job_id,
+        "requires_confirmation": response.requires_confirmation,
+        "task_candidates": [candidate.model_dump(mode="json") for candidate in response.artifacts.task_candidates],
+        "created_tasks": [task.model_dump(mode="json") for task in response.artifacts.created_tasks],
+        "scene_summary": response.trace_summary.goal_summary,
+        "trace": stored_job.trace.model_dump(mode="json") if stored_job and stored_job.trace else None,
+        "error": response.error,
+    }
 
 
 def _decode_and_validate_image(*, image_base64: str, content_type: str | None) -> bytes:

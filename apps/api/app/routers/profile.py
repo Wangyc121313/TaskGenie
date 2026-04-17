@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.models import (
     UserMemoryCreate,
     UserMemoryItem,
+    UserMemoryUpdate,
     UserPlanningContext,
     UserPreferences,
     UserPreferencesUpdate,
@@ -33,6 +34,14 @@ async def list_user_memories(category: Optional[str] = Query(default=None)):
 @profile_router.post("/memories", response_model=UserMemoryItem)
 async def create_user_memory(payload: UserMemoryCreate):
     return MemoryService.create_memory(payload)
+
+
+@profile_router.put("/memories/{memory_id}", response_model=UserMemoryItem)
+async def update_user_memory(memory_id: str, payload: UserMemoryUpdate):
+    updated = MemoryService.update_memory(memory_id, payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Memory not found.")
+    return updated
 
 
 @profile_router.delete("/memories/{memory_id}")

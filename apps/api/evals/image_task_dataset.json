@@ -1,0 +1,12 @@
+[
+  {"id":"img-01","image_hint":"whiteboard sprint notes","expected_tasks":2},
+  {"id":"img-02","image_hint":"release checklist screenshot","expected_tasks":2},
+  {"id":"img-03","image_hint":"meeting note photo","expected_tasks":3},
+  {"id":"img-04","image_hint":"course schedule screenshot","expected_tasks":2},
+  {"id":"img-05","image_hint":"sticky note board","expected_tasks":3},
+  {"id":"img-06","image_hint":"hackathon planning page","expected_tasks":3},
+  {"id":"img-07","image_hint":"kanban board capture","expected_tasks":2},
+  {"id":"img-08","image_hint":"product roadmap image","expected_tasks":3},
+  {"id":"img-09","image_hint":"calendar screenshot with deadlines","expected_tasks":2},
+  {"id":"img-10","image_hint":"handwritten grocery and errands list","expected_tasks":4}
+]

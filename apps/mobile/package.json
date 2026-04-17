@@ -6,8 +6,9 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
+    "lint:ci": "eslint App.tsx src/components/AppErrorBoundary.js src/components/BottomNavigation.js src/components/TaskListTab.js src/components/AIImagePlanningModal.js src/hooks/useTaskOperations.js src/hooks/useAgentAssistant.js src/hooks/useProfileData.js src/features/assistant/AssistantTab.js src/features/profile/ProfileTab.js",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest --runInBand"
   },
   "dependencies": {
     "react": "19.0.0",
