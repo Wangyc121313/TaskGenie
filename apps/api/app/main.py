@@ -1,4 +1,5 @@
 import io
+import logging
 import sys
 from datetime import datetime
 
@@ -16,6 +17,10 @@ if sys.stderr.encoding and sys.stderr.encoding.lower() != "utf-8":
 
 
 def create_app() -> FastAPI:
+    logging.basicConfig(
+        level=getattr(logging, current_settings.LOG_LEVEL.upper(), logging.INFO),
+        format=current_settings.LOG_FORMAT,
+    )
     app = FastAPI(
         title="TaskGenie API",
         description="AI-assisted task planning and scheduling API.",

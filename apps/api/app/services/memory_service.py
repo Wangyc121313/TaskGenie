@@ -8,9 +8,11 @@ from app.models.schemas import (
     Task,
     UserMemoryCreate,
     UserMemoryItem,
+    UserMemoryUpdate,
     UserPlanningContext,
     UserPreferences,
     UserPreferencesUpdate,
+    MemorySourceType,
 )
 
 
@@ -72,11 +74,33 @@ class MemoryService:
             source=payload.source,
             content=payload.content,
             tags=payload.tags,
+            source_confidence=payload.source_confidence,
+            is_active=payload.is_active,
             created_at=now,
             updated_at=now,
             last_used_at=None,
         )
         return db.create_user_memory(memory)
+
+    @staticmethod
+    def update_memory(
+        memory_id: str,
+        payload: UserMemoryUpdate,
+        user_id: str = "default",
+    ) -> UserMemoryItem | None:
+        existing = next(
+            (memory for memory in db.list_user_memories(user_id=user_id) if memory.id == memory_id),
+            None,
+        )
+        if not existing:
+            return None
+
+        update_data = payload.model_dump(exclude_unset=True)
+        if "source" not in update_data:
+            update_data["source"] = MemorySourceType.USER_EDITED
+        update_data["updated_at"] = datetime.now()
+        updated_memory = existing.model_copy(update=update_data)
+        return db.update_user_memory(updated_memory)
 
     @staticmethod
     def delete_memory(memory_id: str) -> bool:
@@ -101,7 +125,15 @@ class MemoryService:
 
         for memory in relevant_memories:
             db.update_user_memory(
-                memory.model_copy(update={"last_used_at": datetime.now()})
+                memory.model_copy(
+                    update={
+                        "last_used_at": datetime.now(),
+                        "relevance_score": round(
+                            max(memory.relevance_score or 0.5, 0.5),
+                            2,
+                        ),
+                    }
+                )
             )
 
         return UserPlanningContext(
@@ -162,9 +194,10 @@ class MemoryService:
                 extracted.append(
                     UserMemoryCreate(
                         category="goal",
-                        source="inferred",
+                        source=MemorySourceType.SYSTEM_INFERRED,
                         content=text.strip(),
                         tags=["task-derived", "goal"],
+                        source_confidence=0.72,
                     )
                 )
 
@@ -172,9 +205,10 @@ class MemoryService:
                 extracted.append(
                     UserMemoryCreate(
                         category="constraint",
-                        source="inferred",
+                        source=MemorySourceType.SYSTEM_INFERRED,
                         content=text.strip(),
                         tags=["task-derived", "constraint"],
+                        source_confidence=0.68,
                     )
                 )
 
@@ -182,9 +216,10 @@ class MemoryService:
                 extracted.append(
                     UserMemoryCreate(
                         category="preference",
-                        source="inferred",
+                        source=MemorySourceType.SYSTEM_INFERRED,
                         content=text.strip(),
                         tags=["task-derived", "preference"],
+                        source_confidence=0.66,
                     )
                 )
 
@@ -245,10 +280,25 @@ class MemoryService:
             reverse=True,
         )
 
-        top_memories = [memory for score, memory in scored_memories if score > 0][:limit]
+        top_memories = []
+        for score, memory in scored_memories:
+            if score <= 0:
+                continue
+            top_memories.append(
+                memory.model_copy(
+                    update={
+                        "relevance_score": min(1.0, round(score / max(len(tokens), 1), 2)),
+                    }
+                )
+            )
+            if len(top_memories) >= limit:
+                break
         if top_memories:
             return top_memories
-        return memories[: min(limit, 3)]
+        return [
+            memory.model_copy(update={"relevance_score": 0.2})
+            for memory in memories[: min(limit, 3)]
+        ]
 
     @staticmethod
     def _build_behavior_summary() -> str:

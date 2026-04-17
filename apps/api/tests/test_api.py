@@ -7,17 +7,18 @@ from fastapi.testclient import TestClient
 from app.db.database import db
 from app.main import app
 from app.models.schemas import (
+    AgentTaskPlanResult,
     AgentExecutionStatus,
     AIJob,
     AIJobStatus,
+    AgentRunMode,
     ImageTaskCandidate,
     ImageTaskExtractionResult,
     PlannedTask,
-    TaskPlanningResult,
 )
+from app.agent.planner import AgentPlanner
 from app.services.ai_service import AIService
 from app.services.llm_service import LLMService
-from app.services.task_planning_workflow import TaskPlanningWorkflow
 
 
 client = TestClient(app)
@@ -207,16 +208,40 @@ class TestTaskGenieAPI:
     def test_ai_job_not_found(self):
         response = client.get("/ai/jobs/nonexistent-job-id")
         assert response.status_code == 404
-        assert "任务不存在" in response.json()["detail"]
+        assert "Job not found." == response.json()["detail"]
 
-    def test_ai_test_endpoint(self):
+    def test_ai_test_endpoint(self, monkeypatch):
+        def mock_plan_text_goal(**kwargs):
+            return AgentTaskPlanResult(
+                goal_summary="Break a testing goal into two execution tasks.",
+                project_theme="Testing",
+                success_criteria=["Tasks are created successfully."],
+                plan_rationale="Two tasks are enough to validate the workflow.",
+                risk_notes=[],
+                tasks=[
+                    PlannedTask(
+                        name="Write integration tests",
+                        description="Cover the happy path of the API workflow.",
+                        priority="high",
+                        estimated_hours=1.5,
+                    ),
+                    PlannedTask(
+                        name="Verify agent response shape",
+                        description="Confirm the endpoint returns the new agent fields.",
+                        priority="medium",
+                        estimated_hours=1.0,
+                    ),
+                ],
+            )
+
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal", mock_plan_text_goal)
         response = client.post("/ai/plan-tasks/test?prompt=测试任务&max_tasks=2")
         assert response.status_code == 200
         data = response.json()
-        assert "success" in data
-        if data["success"]:
-            assert "tasks_created" in data
-            assert "tasks" in data
+        assert data["mode"] == AgentRunMode.TEXT_GOAL
+        assert data["status"] == AIJobStatus.COMPLETED
+        assert data["artifacts"]["project_theme"] == "Testing"
+        assert len(data["artifacts"]["created_tasks"]) == 2
 
     def test_day_schedule_preview(self):
         today = datetime.now().date()
@@ -245,7 +270,7 @@ class TestTaskGenieAPI:
     def test_invalid_date_format(self):
         response = client.get("/ai/schedule-day/invalid-date")
         assert response.status_code == 400
-        assert "日期格式错误" in response.json()["detail"]
+        assert "Invalid date format." in response.json()["detail"]
 
     def test_complete_workflow(self):
         created_task = self._create_task(
@@ -446,7 +471,7 @@ class TestTaskGenieAPI:
         assert data["trace"]["project_theme"] == "Release Prep"
         assert data["trace"]["events"][0]["event_type"] == "image_received"
         assert any(event["event_type"] == "execution_started" for event in data["trace"]["events"])
-        assert data["created_tasks"][0]["name"].startswith("Release Prep Step1:")
+        assert data["created_tasks"][0]["name"].startswith("Release Prep Step 1:")
 
     def test_ai_job_trace_records_planning_and_execution(self, monkeypatch):
         captured = {}
@@ -473,16 +498,14 @@ class TestTaskGenieAPI:
             estimated_hours=4.0,
         )
 
-        def mock_plan_tasks(
-            prompt: str,
-            max_tasks: int,
-            task_type: str,
-            now: datetime,
-            planning_context: str = "",
-        ):
+        def mock_plan_text_goal(prompt: str, max_tasks: int, now: datetime, planning_context: str = ""):
             captured["planning_context"] = planning_context
-            return TaskPlanningResult(
+            return AgentTaskPlanResult(
+                goal_summary="Upgrade TaskGenie into an explainable agent workflow.",
                 project_theme="Agent Upgrade",
+                success_criteria=["Trace is stored", "Tool calls are exposed"],
+                plan_rationale="The project needs persistent trace visibility before broader UX work.",
+                risk_notes=["Legacy endpoints may expect the old job shape."],
                 tasks=[
                     PlannedTask(
                         name="Design workflow trace",
@@ -499,7 +522,7 @@ class TestTaskGenieAPI:
                 ],
             )
 
-        monkeypatch.setattr(TaskPlanningWorkflow, "plan_tasks", mock_plan_tasks)
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal", mock_plan_text_goal)
 
         job_id = "trace-job"
         db.create_ai_job(
@@ -525,6 +548,7 @@ class TestTaskGenieAPI:
         assert job.trace.execution_status == AgentExecutionStatus.COMPLETED
         assert job.trace.current_step == "completed"
         assert job.trace.task_type == "development"
+        assert job.trace.goal_summary == "Upgrade TaskGenie into an explainable agent workflow."
         assert job.trace.project_theme == "Agent Upgrade"
         assert job.trace.preference_snapshot is not None
         assert job.trace.preference_snapshot.planning_style == "structured"
@@ -535,19 +559,62 @@ class TestTaskGenieAPI:
         assert "High-priority open tasks: 1." in captured["planning_context"]
         assert len(job.trace.events) >= 6
         assert job.trace.events[0].event_type == "memory_loaded"
-        assert job.trace.events[1].event_type == "planning_started"
-        assert job.trace.events[2].event_type == "planning_completed"
-        assert job.trace.events[3].event_type == "execution_started"
+        assert job.trace.events[1].event_type == "planning_completed"
+        assert any(event.event_type == "execution_started" for event in job.trace.events)
         assert job.trace.events[-1].event_type == "run_completed"
         assert job.trace.events[-1].metadata["created_task_count"] == 2
         assert len(job.trace.planned_tasks) == 2
         assert len(job.trace.tool_calls) == 2
         assert len(job.trace.created_tasks) == 2
+        assert len(job.trace.decision_trace) >= 4
         assert all(tool_call.status == "completed" for tool_call in job.trace.tool_calls)
         assert all(tool_call.output is not None for tool_call in job.trace.tool_calls)
         completed_tool_events = [
             event for event in job.trace.events if event.event_type == "tool_completed"
         ]
         assert len(completed_tool_events) == 2
-        assert isinstance(job.result, list)
-        assert len(job.result) == 2
+        assert job.result["mode"] == "text_goal"
+        assert len(job.result["artifacts"]["created_tasks"]) == 2
+
+    def test_agent_run_requires_confirmation_then_confirms(self, monkeypatch):
+        def mock_plan_text_goal(**kwargs):
+            return AgentTaskPlanResult(
+                goal_summary="Turn a goal into a reviewed task list.",
+                project_theme="Confirmation Flow",
+                success_criteria=["Preview exists", "User can confirm writes"],
+                plan_rationale="High-impact writes should wait for the user.",
+                risk_notes=[],
+                tasks=[
+                    PlannedTask(
+                        name="Review pending tasks",
+                        description="Inspect the candidate tasks before execution.",
+                        priority="high",
+                        estimated_hours=1.0,
+                    )
+                ],
+            )
+
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal", mock_plan_text_goal)
+
+        run_response = client.post(
+            "/ai/agent/run",
+            json={
+                "mode": "text_goal",
+                "prompt": "Plan a reviewed launch checklist",
+                "max_tasks": 3,
+                "auto_execute": False,
+            },
+        )
+        assert run_response.status_code == 200
+        run_data = run_response.json()
+        assert run_data["status"] == "awaiting_confirmation"
+        assert run_data["requires_confirmation"] is True
+        assert len(run_data["artifacts"]["planned_tasks"]) == 1
+        assert len(run_data["artifacts"]["created_tasks"]) == 0
+
+        confirm_response = client.post(f"/ai/agent/runs/{run_data['job_id']}/confirm")
+        assert confirm_response.status_code == 200
+        confirm_data = confirm_response.json()
+        assert confirm_data["status"] == "completed"
+        assert confirm_data["requires_confirmation"] is False
+        assert len(confirm_data["artifacts"]["created_tasks"]) == 1

@@ -14,6 +14,7 @@ class TaskStatus(str, Enum):
 class AIJobStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -24,6 +25,37 @@ class AgentExecutionStatus(str, Enum):
     EXECUTING = "executing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class AgentStrategy(str, Enum):
+    PLAN_EXECUTE = "plan_execute"
+    REACT = "react"
+    REFLECTION_LOOP = "reflection_loop"
+
+
+class AgentRunMode(str, Enum):
+    TEXT_GOAL = "text_goal"
+    IMAGE_GOAL = "image_goal"
+    SCHEDULE_DAY = "schedule_day"
+
+
+class ToolSideEffectLevel(str, Enum):
+    READ = "read"
+    WRITE = "write"
+    DESTRUCTIVE = "destructive"
+
+
+class MemorySourceType(str, Enum):
+    USER_CONFIRMED = "user_confirmed"
+    SYSTEM_INFERRED = "system_inferred"
+    USER_EDITED = "user_edited"
+
+
+class AgentDecisionStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 class Task(BaseModel):
@@ -101,6 +133,15 @@ class TaskPlanningResult(BaseModel):
     tasks: List[PlannedTask]
 
 
+class AgentTaskPlanResult(BaseModel):
+    goal_summary: str
+    project_theme: str
+    success_criteria: List[str] = Field(default_factory=list)
+    plan_rationale: str = ""
+    risk_notes: List[str] = Field(default_factory=list)
+    tasks: List[PlannedTask]
+
+
 class ImageTaskExtractionResult(BaseModel):
     scene_summary: str
     detected_context: str
@@ -121,12 +162,41 @@ class DayScheduleGenerationResult(BaseModel):
     efficiency_score: int = 8
 
 
+class ToolDefinitionSchema(BaseModel):
+    name: str
+    description: str
+    input_schema: Dict[str, Any] = Field(default_factory=dict)
+    output_schema: Dict[str, Any] = Field(default_factory=dict)
+    side_effect_level: ToolSideEffectLevel = ToolSideEffectLevel.READ
+    requires_confirmation: bool = False
+    retryable: bool = False
+
+
 class AgentToolCallTrace(BaseModel):
+    call_id: Optional[str] = None
     tool_name: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
+    input_schema: Dict[str, Any] = Field(default_factory=dict)
+    output_schema: Dict[str, Any] = Field(default_factory=dict)
+    side_effect_level: ToolSideEffectLevel = ToolSideEffectLevel.READ
+    requires_confirmation: bool = False
+    retryable: bool = False
     status: Literal["pending", "completed", "failed"] = "pending"
     output: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    latency_ms: Optional[int] = None
+    executed_at: Optional[datetime] = None
+
+
+class AgentDecisionTrace(BaseModel):
+    timestamp: datetime
+    stage: str
+    decision: str
+    action: str
+    observation: str
+    status: AgentDecisionStatus = AgentDecisionStatus.COMPLETED
+    latency_ms: Optional[int] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentTraceEvent(BaseModel):
@@ -169,9 +239,12 @@ class UserMemoryItem(BaseModel):
     id: Optional[str] = None
     user_id: str = "default"
     category: Literal["preference", "constraint", "goal", "habit", "context"] = "context"
-    source: Literal["user", "system", "inferred"] = "user"
+    source: MemorySourceType = MemorySourceType.USER_CONFIRMED
     content: str
     tags: List[str] = Field(default_factory=list)
+    source_confidence: float = 1.0
+    relevance_score: Optional[float] = None
+    is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None
@@ -179,9 +252,20 @@ class UserMemoryItem(BaseModel):
 
 class UserMemoryCreate(BaseModel):
     category: Literal["preference", "constraint", "goal", "habit", "context"] = "context"
-    source: Literal["user", "system", "inferred"] = "user"
+    source: MemorySourceType = MemorySourceType.USER_CONFIRMED
     content: str
     tags: List[str] = Field(default_factory=list)
+    source_confidence: float = 1.0
+    is_active: bool = True
+
+
+class UserMemoryUpdate(BaseModel):
+    category: Optional[Literal["preference", "constraint", "goal", "habit", "context"]] = None
+    source: Optional[MemorySourceType] = None
+    content: Optional[str] = None
+    tags: Optional[List[str]] = None
+    source_confidence: Optional[float] = None
+    is_active: Optional[bool] = None
 
 
 class UserPlanningContext(BaseModel):
@@ -192,15 +276,24 @@ class UserPlanningContext(BaseModel):
 
 
 class TaskPlanningTrace(BaseModel):
+    trace_id: Optional[str] = None
+    strategy: AgentStrategy = AgentStrategy.PLAN_EXECUTE
     execution_status: AgentExecutionStatus = AgentExecutionStatus.PENDING
     current_step: str = "queued"
+    requires_confirmation: bool = False
     input_modality: Literal["text", "image"] = "text"
     task_type: Optional[str] = None
+    goal_summary: Optional[str] = None
     project_theme: Optional[str] = None
     source_summary: Optional[str] = None
+    success_criteria: List[str] = Field(default_factory=list)
+    plan_rationale: str = ""
+    risk_notes: List[str] = Field(default_factory=list)
+    improvement_notes: List[str] = Field(default_factory=list)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     events: List[AgentTraceEvent] = Field(default_factory=list)
+    decision_trace: List[AgentDecisionTrace] = Field(default_factory=list)
     preference_snapshot: Optional[UserPreferences] = None
     relevant_memories: List[UserMemoryItem] = Field(default_factory=list)
     behavior_summary: str = ""
@@ -262,3 +355,59 @@ class TaskStatsResponse(BaseModel):
 class TagsResponse(BaseModel):
     system_tags: List[str]
     tag_descriptions: Dict[str, str]
+
+
+class AgentRunRequest(BaseModel):
+    mode: AgentRunMode
+    prompt: Optional[str] = None
+    max_tasks: int = 5
+    notes: str = ""
+    image_base64: Optional[str] = None
+    image_mime_type: str = "image/png"
+    filename: Optional[str] = "upload-image"
+    date: Optional[str] = None
+    task_ids: Optional[List[str]] = None
+    auto_execute: bool = False
+    force_regenerate: bool = False
+
+
+class AgentRunArtifacts(BaseModel):
+    project_theme: Optional[str] = None
+    planned_tasks: List[PlannedTask] = Field(default_factory=list)
+    task_candidates: List[ImageTaskCandidate] = Field(default_factory=list)
+    created_tasks: List[Task] = Field(default_factory=list)
+    schedule: Optional[DaySchedule] = None
+    suggestions: List[str] = Field(default_factory=list)
+    success_criteria: List[str] = Field(default_factory=list)
+    risk_notes: List[str] = Field(default_factory=list)
+    improvement_notes: List[str] = Field(default_factory=list)
+
+
+class AgentRunSummary(BaseModel):
+    job_id: str
+    mode: AgentRunMode
+    strategy: AgentStrategy = AgentStrategy.PLAN_EXECUTE
+    current_stage: str
+    final_status: AIJobStatus
+    requires_confirmation: bool = False
+    goal_summary: Optional[str] = None
+    project_theme: Optional[str] = None
+    planned_task_count: int = 0
+    candidate_task_count: int = 0
+    executed_tool_count: int = 0
+    created_task_count: int = 0
+    used_memory_count: int = 0
+    improvement_notes: List[str] = Field(default_factory=list)
+    timeline: List[AgentDecisionTrace] = Field(default_factory=list)
+
+
+class AgentRunResponse(BaseModel):
+    job_id: str
+    mode: AgentRunMode
+    status: AIJobStatus
+    strategy: AgentStrategy = AgentStrategy.PLAN_EXECUTE
+    requires_confirmation: bool = False
+    trace_summary: AgentRunSummary
+    artifacts: AgentRunArtifacts
+    final_result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None

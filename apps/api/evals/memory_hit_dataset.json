@@ -1,0 +1,12 @@
+[
+  {"id":"mem-01","prompt":"Plan morning focus work","expected_category":"constraint"},
+  {"id":"mem-02","prompt":"Prioritize AI agent career work","expected_category":"goal"},
+  {"id":"mem-03","prompt":"Build around one-hour work blocks","expected_category":"preference"},
+  {"id":"mem-04","prompt":"Avoid meetings before 10am","expected_category":"constraint"},
+  {"id":"mem-05","prompt":"Schedule my high-impact tasks first","expected_category":"preference"},
+  {"id":"mem-06","prompt":"Keep afternoon for implementation work","expected_category":"habit"},
+  {"id":"mem-07","prompt":"Use flexible planning on weekends","expected_category":"preference"},
+  {"id":"mem-08","prompt":"Focus on portfolio projects this month","expected_category":"goal"},
+  {"id":"mem-09","prompt":"Do not overload one day with deep work","expected_category":"constraint"},
+  {"id":"mem-10","prompt":"Keep context about my current release work","expected_category":"context"}
+]

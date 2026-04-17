@@ -1,0 +1,22 @@
+[
+  {"id":"tp-01","goal":"Plan a weekly AI agent interview prep routine","expected_theme":"Interview Prep"},
+  {"id":"tp-02","goal":"Break down a mobile onboarding redesign into tasks","expected_theme":"Onboarding Redesign"},
+  {"id":"tp-03","goal":"Prepare an MVP demo for a task planning app","expected_theme":"Demo Prep"},
+  {"id":"tp-04","goal":"Organize a product sprint for release week","expected_theme":"Release Sprint"},
+  {"id":"tp-05","goal":"Draft a backend refactor plan for an agent runtime","expected_theme":"Agent Runtime"},
+  {"id":"tp-06","goal":"Turn a vague career goal into weekly execution tasks","expected_theme":"Career Planning"},
+  {"id":"tp-07","goal":"Plan the next two weeks of FastAPI learning","expected_theme":"Learning Plan"},
+  {"id":"tp-08","goal":"Structure a research spike for tool-calling agents","expected_theme":"Research Spike"},
+  {"id":"tp-09","goal":"Break a React Native assistant tab into actionable tasks","expected_theme":"Assistant UI"},
+  {"id":"tp-10","goal":"Plan a GitHub Actions CI setup for a monorepo","expected_theme":"CI Setup"},
+  {"id":"tp-11","goal":"Prepare a portfolio README for an AI product project","expected_theme":"Portfolio Docs"},
+  {"id":"tp-12","goal":"Organize a memory system rollout for an AI planner","expected_theme":"Memory Rollout"},
+  {"id":"tp-13","goal":"Create a day-by-day launch checklist for a beta release","expected_theme":"Launch Checklist"},
+  {"id":"tp-14","goal":"Break down an image-to-task feature into dev tasks","expected_theme":"Image to Task"},
+  {"id":"tp-15","goal":"Plan user interviews for an AI productivity app","expected_theme":"User Research"},
+  {"id":"tp-16","goal":"Design evaluation tasks for planning quality","expected_theme":"Eval Design"},
+  {"id":"tp-17","goal":"Prepare a blog post about building hand-rolled agent runtimes","expected_theme":"Engineering Article"},
+  {"id":"tp-18","goal":"Organize technical debt cleanup for a mobile app","expected_theme":"Debt Cleanup"},
+  {"id":"tp-19","goal":"Plan a feature branch strategy for four milestone PRs","expected_theme":"Branch Strategy"},
+  {"id":"tp-20","goal":"Break down deployment hardening for a FastAPI service","expected_theme":"Deployment Hardening"}
+]

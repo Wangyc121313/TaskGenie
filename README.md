@@ -1,10 +1,11 @@
 # TaskGenie
 
-TaskGenie is a task planning application built around a mobile client and an AI-assisted API.
+TaskGenie is an AI-native task planning application built around a mobile client, a formal agent runtime, and an explainable planning API.
 
-The current product focuses on two user flows:
+The current product focuses on three primary user flows:
 
 - turn a natural-language goal into a list of executable tasks
+- turn an image or screenshot into candidate tasks
 - generate a day plan from existing tasks
 
 This repository is organized as a monorepo so the mobile app and the API can evolve together in one place.
@@ -18,7 +19,15 @@ TaskGenie is not just a CRUD todo app. It tries to turn vague user intent into s
 - the mobile app displays, edits, and tracks those tasks
 - users can ask the system to schedule a day automatically
 
-At the moment, the AI layer is still closer to "LLM-powered planning" than a full agent architecture. That makes the repo a good base for future AI-agent refactoring.
+The current architecture now exposes a hand-rolled `Plan-and-Execute` runtime:
+
+- planner
+- policy / confirmation gate
+- executor
+- trace formatter
+- editable memory + preferences
+
+That makes the repo significantly closer to an AI agent portfolio project than a simple "LLM feature" demo.
 
 ## Repository Layout
 
@@ -44,6 +53,8 @@ This layout is intentional:
 - React 19
 - Context API + hooks
 - Fetch API
+- Unified Assistant tab
+- Profile + Memory management tab
 
 ### API
 
@@ -52,12 +63,17 @@ This layout is intentional:
 - SQLAlchemy
 - SQLite
 - OpenAI-compatible SDK
+- Hand-rolled agent runtime with confirmation gates
+- Structured trace + decision timeline
 
 ## Current Capabilities
 
 - task creation, update, deletion, and calendar view
 - AI task decomposition from free-form prompts
+- AI agent run preview and confirmation flow
 - AI day scheduling based on due date and priority
+- image-to-task extraction with multimodal input
+- user preferences and editable long-term memory
 - local persistence for tasks, schedules, and async AI jobs
 
 ## Run Locally
@@ -119,13 +135,12 @@ This refactor fixes that:
 
 ## Next Direction
 
-The current architecture is a solid base for a stronger AI application or AI-agent portfolio project. The next major upgrade would be adding:
+The next major upgrades after this iteration are:
 
-- structured LLM outputs instead of manual JSON parsing
-- tool-calling workflows
-- memory and preference storage
-- evaluation and tracing
-- agent-style planning and execution loops
+- automated eval runners over the local regression datasets
+- richer assistant UX polish and demo assets
+- deeper schedule confirmation and explanation
+- optional migration to a graph framework if the runtime graph grows
 
 ## Recent Refactor
 
@@ -137,3 +152,9 @@ The API codebase now uses a package layout instead of flat top-level modules:
 - `apps/api/app/db/`
 - `apps/api/app/models/`
 - `apps/api/tests/`
+
+## Architecture Docs
+
+- [Agent Architecture](docs/agent-architecture.md)
+- [Demo Walkthrough](docs/demo-walkthrough.md)
+- [Roadmap](docs/plans/2026-04-17-taskgenie-agent-fullstack-roadmap.md)
