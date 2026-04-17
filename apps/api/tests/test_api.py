@@ -1,12 +1,22 @@
 import asyncio
+import base64
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
 from app.db.database import db
 from app.main import app
-from app.models.schemas import AgentExecutionStatus, AIJob, AIJobStatus, PlannedTask, TaskPlanningResult
+from app.models.schemas import (
+    AgentExecutionStatus,
+    AIJob,
+    AIJobStatus,
+    ImageTaskCandidate,
+    ImageTaskExtractionResult,
+    PlannedTask,
+    TaskPlanningResult,
+)
 from app.services.ai_service import AIService
+from app.services.llm_service import LLMService
 from app.services.task_planning_workflow import TaskPlanningWorkflow
 
 
@@ -346,6 +356,97 @@ class TestTaskGenieAPI:
         assert preferences_response.status_code == 200
         preferences = preferences_response.json()
         assert preferences["preferred_task_duration_hours"] == 1.7
+
+    def test_ai_image_task_preview_returns_candidates(self, monkeypatch):
+        def mock_multimodal_output(**_kwargs):
+            return ImageTaskExtractionResult(
+                scene_summary="A handwritten whiteboard with sprint tasks.",
+                detected_context="Sprint Planning",
+                tasks=[
+                    ImageTaskCandidate(
+                        name="Draft API integration checklist",
+                        description="Turn the whiteboard notes into an implementation checklist.",
+                        priority="high",
+                        estimated_hours=1.5,
+                        confidence=0.92,
+                        source_snippet="API integration checklist",
+                    ),
+                    ImageTaskCandidate(
+                        name="Follow up on mobile UI blockers",
+                        description="Review the blockers listed in the image and assign owners.",
+                        priority="medium",
+                        estimated_hours=1.0,
+                        confidence=0.81,
+                        source_snippet="mobile UI blockers",
+                    ),
+                ],
+                warnings=["One note in the corner is partially obscured."],
+            )
+
+        monkeypatch.setattr(LLMService, "generate_multimodal_structured_output", mock_multimodal_output)
+        encoded_image = base64.b64encode(b"fake-image-bytes").decode("utf-8")
+
+        response = client.post(
+            "/ai/plan-image/sync",
+            json={
+                "image_base64": encoded_image,
+                "image_mime_type": "image/png",
+                "filename": "board.png",
+                "notes": "Convert this sprint board into tasks",
+                "max_tasks": 3,
+                "auto_create": False,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert len(data["task_candidates"]) == 2
+        assert len(data["created_tasks"]) == 0
+        assert data["scene_summary"] == "A handwritten whiteboard with sprint tasks."
+        assert data["trace"]["input_modality"] == "image"
+        assert data["trace"]["source_summary"] == "A handwritten whiteboard with sprint tasks."
+        assert len(data["trace"]["extracted_candidates"]) == 2
+
+    def test_ai_image_task_auto_create_executes_tasks(self, monkeypatch):
+        def mock_multimodal_output(**_kwargs):
+            return ImageTaskExtractionResult(
+                scene_summary="A screenshot of a meeting notes app.",
+                detected_context="Release Prep",
+                tasks=[
+                    ImageTaskCandidate(
+                        name="Prepare release notes",
+                        description="Summarize visible release items from the screenshot.",
+                        priority="high",
+                        estimated_hours=2.0,
+                        confidence=0.95,
+                        source_snippet="release notes",
+                    )
+                ],
+            )
+
+        monkeypatch.setattr(LLMService, "generate_multimodal_structured_output", mock_multimodal_output)
+        encoded_image = base64.b64encode(b"fake-image-bytes").decode("utf-8")
+
+        response = client.post(
+            "/ai/plan-image/sync",
+            json={
+                "image_base64": encoded_image,
+                "image_mime_type": "image/png",
+                "filename": "notes.png",
+                "notes": "Create the task immediately",
+                "max_tasks": 2,
+                "auto_create": True,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert len(data["task_candidates"]) == 1
+        assert len(data["created_tasks"]) == 1
+        assert data["trace"]["project_theme"] == "Release Prep"
+        assert data["trace"]["events"][0]["event_type"] == "image_received"
+        assert any(event["event_type"] == "execution_started" for event in data["trace"]["events"])
+        assert data["created_tasks"][0]["name"].startswith("Release Prep Step1:")
 
     def test_ai_job_trace_records_planning_and_execution(self, monkeypatch):
         captured = {}

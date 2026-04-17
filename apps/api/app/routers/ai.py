@@ -1,10 +1,12 @@
+import base64
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
+from app.core.config import current_settings
 from app.db.database import db
-from app.models import AIDayScheduleRequest, AIJob, AIJobStatus, AITaskRequest
+from app.models import AIDayScheduleRequest, AIImageTaskRequest, AIJob, AIJobStatus, AITaskRequest
 from app.services.ai_service import AIService
 
 
@@ -25,6 +27,39 @@ async def ai_plan_tasks_async(request: AITaskRequest, background_tasks: Backgrou
         "status": "processing",
         "max_tasks": max_tasks,
         "message": f"Planning {max_tasks} tasks from the provided goal.",
+    }
+
+
+@ai_router.post("/plan-image/async")
+async def ai_plan_image_async(
+    background_tasks: BackgroundTasks,
+    request: AIImageTaskRequest,
+):
+    image_bytes = _decode_and_validate_image(
+        image_base64=request.image_base64,
+        content_type=request.image_mime_type,
+    )
+
+    job_id = str(uuid.uuid4())
+    job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
+    db.create_ai_job(job)
+
+    background_tasks.add_task(
+        AIService.process_image_task_planning,
+        job_id,
+        image_bytes=image_bytes,
+        image_mime_type=request.image_mime_type,
+        filename=request.filename or "upload-image",
+        notes=request.notes,
+        max_tasks=max(0, min(10, request.max_tasks)),
+        auto_create=request.auto_create,
+    )
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "max_tasks": max(0, min(10, request.max_tasks)),
+        "auto_create": request.auto_create,
+        "message": "Processing the uploaded image for task extraction.",
     }
 
 
@@ -139,3 +174,72 @@ async def test_ai_planning(prompt: str = "Learn React Native", max_tasks: int = 
         return {"success": False, "error": job.error}
     except Exception as exc:
         return {"success": False, "error": str(exc)}
+
+
+@ai_router.post("/plan-image/test")
+async def test_ai_image_planning(request: AIImageTaskRequest):
+    return await _run_image_planning_sync(request)
+
+
+@ai_router.post("/plan-image/sync")
+async def sync_ai_image_planning(request: AIImageTaskRequest):
+    return await _run_image_planning_sync(request)
+
+
+async def _run_image_planning_sync(request: AIImageTaskRequest):
+    image_bytes = _decode_and_validate_image(
+        image_base64=request.image_base64,
+        content_type=request.image_mime_type,
+    )
+
+    job_id = str(uuid.uuid4())
+    job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
+    db.create_ai_job(job)
+
+    try:
+        await AIService.process_image_task_planning(
+            job_id,
+            image_bytes=image_bytes,
+            image_mime_type=request.image_mime_type,
+            filename=request.filename or "upload-image",
+            notes=request.notes,
+            max_tasks=max(0, min(10, request.max_tasks)),
+            auto_create=request.auto_create,
+        )
+        job = db.get_ai_job(job_id)
+        if not job:
+            return {"success": False, "error": "Job not found."}
+        if job.status == AIJobStatus.COMPLETED:
+            result = job.result or {}
+            return {
+                "success": True,
+                "task_candidates": result.get("task_candidates", []),
+                "created_tasks": result.get("created_tasks", []),
+                "scene_summary": result.get("scene_summary"),
+                "trace": job.trace.model_dump(mode="json") if job.trace else None,
+            }
+        return {"success": False, "error": job.error}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+def _decode_and_validate_image(*, image_base64: str, content_type: str | None) -> bytes:
+    try:
+        image_bytes = base64.b64decode(image_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid base64 image payload.") from exc
+
+    _validate_image_upload(content_type, len(image_bytes))
+    return image_bytes
+
+
+def _validate_image_upload(content_type: str | None, size_bytes: int) -> None:
+    if not content_type or not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image uploads are supported.")
+
+    max_bytes = current_settings.MAX_IMAGE_UPLOAD_MB * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image exceeds the {current_settings.MAX_IMAGE_UPLOAD_MB}MB upload limit.",
+        )

@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 from typing import Type, TypeVar
@@ -50,6 +51,52 @@ class LLMService:
         except ValidationError as exc:
             raise LLMResponseError(
                 f"Model response did not match {response_model.__name__}: {exc}"
+            ) from exc
+
+    @classmethod
+    def generate_multimodal_structured_output(
+        cls,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        image_bytes: bytes,
+        image_mime_type: str,
+        response_model: Type[ResponseModelT],
+        temperature: float = 0.4,
+        max_tokens: int = 1600,
+    ) -> ResponseModelT:
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        data_url = f"data:{image_mime_type};base64,{image_b64}"
+
+        response = cls._client.chat.completions.create(
+            model=current_settings.OPENAI_VISION_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": data_url,
+                            },
+                        },
+                    ],
+                },
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        content = response.choices[0].message.content or ""
+        payload = cls._extract_json_payload(content)
+
+        try:
+            return response_model.model_validate(payload)
+        except ValidationError as exc:
+            raise LLMResponseError(
+                f"Vision model response did not match {response_model.__name__}: {exc}"
             ) from exc
 
     @staticmethod
