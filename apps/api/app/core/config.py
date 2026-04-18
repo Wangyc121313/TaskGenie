@@ -17,8 +17,8 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
 
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.siliconflow.cn/v1")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+    OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "kimi-k2.5")
     OPENAI_VISION_MODEL: str = os.getenv("OPENAI_VISION_MODEL", OPENAI_MODEL)
 
     MAX_TASKS_PER_PLANNING: int = int(os.getenv("MAX_TASKS_PER_PLANNING", "10"))

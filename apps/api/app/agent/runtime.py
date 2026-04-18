@@ -18,12 +18,15 @@ from app.models.schemas import (
     AgentRunMode,
     AgentRunRequest,
     AgentTraceEvent,
+    AgentToolCallTrace,
     DaySchedule,
     PlannedTask,
     Task,
+    AgentTaskPlanResult,
     TaskPlanningTrace,
 )
 from app.services.memory_service import MemoryService
+from app.services.tool_registry import task_tool_registry
 
 
 class AgentRuntime:
@@ -216,6 +219,15 @@ class AgentRuntime:
             observation=f"Matched {len(planning_context.relevant_memories)} memories",
         )
 
+        if request.auto_execute:
+            return AgentRuntime._run_text_goal_iteratively(
+                job_id=job_id,
+                request=request,
+                trace=trace,
+                prompt=prompt,
+                planning_context=planning_context.prompt_context,
+            )
+
         trace.current_step = "planning"
         planning_started = time.perf_counter()
         plan = AgentPlanner.plan_text_goal(
@@ -369,6 +381,207 @@ class AgentRuntime:
         ]
         result_payload["final_result"] = {
             "created_tasks": [task.model_dump(mode="json") for task in trace.created_tasks]
+        }
+        return AgentRuntime._update_job(
+            job_id,
+            status=AIJobStatus.COMPLETED,
+            trace=trace,
+            result=result_payload,
+            error=None,
+        )
+
+    @staticmethod
+    def _run_text_goal_iteratively(
+        *,
+        job_id: str,
+        request: AgentRunRequest,
+        trace: TaskPlanningTrace,
+        prompt: str,
+        planning_context: str,
+    ) -> AIJob:
+        max_tasks = max(1, min(10, request.max_tasks))
+        max_iterations = min(max_tasks + 1, 6)
+        execution_history: list[dict[str, Any]] = []
+        available_tools = AgentRuntime._serialize_available_tools()
+        completion_message: Optional[str] = None
+
+        for iteration in range(max_iterations):
+            trace.current_step = "planning"
+            AgentRuntime._append_trace_event(
+                trace,
+                event_type="planning_iteration_started",
+                stage="planning",
+                message="Started an iterative planning step.",
+                metadata={"iteration": iteration + 1},
+            )
+            planning_started = time.perf_counter()
+            step = AgentPlanner.plan_text_goal_step(
+                prompt=prompt,
+                now=datetime.now(),
+                planning_context=planning_context,
+                available_tools=available_tools,
+                execution_history=[dict(item) for item in execution_history],
+                max_tasks=max_tasks,
+            )
+            planning_latency_ms = int((time.perf_counter() - planning_started) * 1000)
+
+            trace.goal_summary = step.goal_summary
+            trace.project_theme = step.project_theme
+            trace.success_criteria = step.success_criteria
+            trace.plan_rationale = step.plan_rationale
+            trace.risk_notes = step.risk_notes
+
+            if step.is_complete:
+                completion_message = step.completion_message
+                AgentRuntime._append_trace_event(
+                    trace,
+                    event_type="planning_completed",
+                    stage="planning",
+                    message="Planner decided the goal is sufficiently advanced.",
+                    metadata={
+                        "iteration": iteration + 1,
+                        "is_complete": True,
+                        "latency_ms": planning_latency_ms,
+                    },
+                )
+                AgentRuntime._append_decision(
+                    trace,
+                    stage="planning",
+                    decision="Stop the iterative loop",
+                    action="Finish without another tool call",
+                    observation=step.completion_message or "Planner marked the run complete.",
+                    latency_ms=planning_latency_ms,
+                    metadata={"iteration": iteration + 1},
+                )
+                break
+
+            if step.planned_task is None or step.tool_call is None:
+                raise ValueError("Iterative text planning must return both planned_task and tool_call.")
+
+            trace.planned_tasks.append(step.planned_task)
+            tool_call = AgentRuntime._build_tool_call_trace(
+                step.tool_call.tool_name,
+                step.tool_call.arguments,
+            )
+            trace.tool_calls.append(tool_call)
+            AgentRuntime._append_trace_event(
+                trace,
+                event_type="planning_completed",
+                stage="planning",
+                message="Planner produced the next tool-driven action.",
+                metadata={
+                    "iteration": iteration + 1,
+                    "tool_name": tool_call.tool_name,
+                    "latency_ms": planning_latency_ms,
+                },
+            )
+            AgentRuntime._append_decision(
+                trace,
+                stage="planning",
+                decision="Choose the next tool action",
+                action=f"Queue {tool_call.tool_name}",
+                observation=step.planned_task.name,
+                latency_ms=planning_latency_ms,
+                metadata={"iteration": iteration + 1},
+            )
+
+            trace.execution_status = AgentExecutionStatus.EXECUTING
+            trace.current_step = "executing"
+            AgentRuntime._append_trace_event(
+                trace,
+                event_type="execution_started",
+                stage="execution",
+                message="Started executing the planned tool call.",
+                metadata={"iteration": iteration + 1, "tool_name": tool_call.tool_name},
+            )
+            results = execute_tool_calls(
+                [tool_call],
+                on_step=lambda index, current_tool_call, result, error: AgentRuntime._record_tool_step(
+                    job_id=job_id,
+                    trace=trace,
+                    index=index,
+                    tool_call=current_tool_call,
+                    result=result,
+                    error=error,
+                ),
+            )
+            new_tasks = [result for result in results if isinstance(result, Task)]
+            trace.created_tasks.extend(new_tasks)
+            execution_history.append(
+                {
+                    "iteration": iteration + 1,
+                    "tool_name": tool_call.tool_name,
+                    "status": tool_call.status,
+                    "output": tool_call.output,
+                    "error": tool_call.error,
+                }
+            )
+
+            if len(trace.created_tasks) >= max_tasks:
+                AgentRuntime._append_decision(
+                    trace,
+                    stage="policy",
+                    decision="Stop after reaching task limit",
+                    action="End iterative execution",
+                    observation=f"Created {len(trace.created_tasks)} tasks",
+                    status=AgentDecisionStatus.SKIPPED,
+                    metadata={"iteration": iteration + 1},
+                )
+                break
+
+        if trace.planned_tasks:
+            trace.improvement_notes = AgentPlanner.reflect_text_plan(
+                AgentTaskPlanResult(
+                    goal_summary=trace.goal_summary or "",
+                    project_theme=trace.project_theme or "",
+                    success_criteria=trace.success_criteria,
+                    plan_rationale=trace.plan_rationale,
+                    risk_notes=trace.risk_notes,
+                    tasks=trace.planned_tasks,
+                )
+            )
+        else:
+            trace.improvement_notes = [
+                "The loop finished without creating tasks; review whether the goal needed direct execution."
+            ]
+
+        trace.execution_status = AgentExecutionStatus.COMPLETED
+        trace.current_step = "completed"
+        trace.finished_at = datetime.now()
+        AgentRuntime._append_reflection_for_completion(trace)
+        AgentRuntime._append_trace_event(
+            trace,
+            event_type="run_completed",
+            stage="completion",
+            message="Completed the iterative text-goal agent run.",
+            metadata={
+                "created_task_count": len(trace.created_tasks),
+                "completion_message": completion_message,
+            },
+        )
+        log_agent_event(
+            "agent_run_completed",
+            job_id=job_id,
+            trace_id=trace.trace_id,
+            strategy=trace.strategy.value,
+            created_task_count=len(trace.created_tasks),
+        )
+        result_payload = {
+            "mode": request.mode.value,
+            "strategy": trace.strategy.value,
+            "goal_summary": trace.goal_summary,
+            "artifacts": {
+                "project_theme": trace.project_theme,
+                "planned_tasks": [task.model_dump(mode="json") for task in trace.planned_tasks],
+                "created_tasks": [task.model_dump(mode="json") for task in trace.created_tasks],
+                "success_criteria": trace.success_criteria,
+                "risk_notes": trace.risk_notes,
+                "improvement_notes": trace.improvement_notes,
+            },
+            "final_result": {
+                "created_tasks": [task.model_dump(mode="json") for task in trace.created_tasks],
+                "completion_message": completion_message,
+            },
         }
         return AgentRuntime._update_job(
             job_id,
@@ -715,6 +928,27 @@ class AgentRuntime:
                 message=message,
                 metadata=metadata or {},
             )
+        )
+
+    @staticmethod
+    def _serialize_available_tools() -> list[dict[str, Any]]:
+        return [
+            definition.to_schema().model_dump(mode="json")
+            for definition in task_tool_registry.list_tools()
+        ]
+
+    @staticmethod
+    def _build_tool_call_trace(tool_name: str, arguments: Dict[str, Any]) -> AgentToolCallTrace:
+        definition = task_tool_registry.get_definition(tool_name)
+        return AgentToolCallTrace(
+            call_id=str(uuid.uuid4()),
+            tool_name=definition.name,
+            arguments=arguments,
+            input_schema=definition.input_schema,
+            output_schema=definition.output_schema,
+            side_effect_level=definition.side_effect_level,
+            requires_confirmation=definition.requires_confirmation,
+            retryable=definition.retryable,
         )
 
     @staticmethod

@@ -1,8 +1,10 @@
+import json
 from datetime import date, datetime
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.db.database import db
 from app.models.schemas import (
+    AgentTextPlanningStep,
     AgentTaskPlanResult,
     DaySchedule,
     DayScheduleGenerationResult,
@@ -46,6 +48,30 @@ class AgentPlanner:
             response_model=AgentTaskPlanResult,
             temperature=0.5,
             max_tokens=1800,
+        )
+
+    @staticmethod
+    def plan_text_goal_step(
+        *,
+        prompt: str,
+        now: datetime,
+        planning_context: str,
+        available_tools: List[Dict[str, Any]],
+        execution_history: List[Dict[str, Any]],
+        max_tasks: int,
+    ) -> AgentTextPlanningStep:
+        return LLMService.generate_structured_output(
+            system_prompt=AgentPlanner._build_text_loop_prompt(
+                now=now,
+                planning_context=planning_context,
+                available_tools=available_tools,
+                execution_history=execution_history,
+                max_tasks=max_tasks,
+            ),
+            user_prompt=f"User goal:\n{prompt}",
+            response_model=AgentTextPlanningStep,
+            temperature=0.4,
+            max_tokens=1200,
         )
 
     @staticmethod
@@ -250,6 +276,61 @@ Requirements:
 - Make tasks specific and executable.
 - Use realistic effort estimates between 0.5 and 6 hours.
 - Keep goal_summary and project_theme concise.
+- Do not include markdown fences.
+""".strip()
+
+    @staticmethod
+    def _build_text_loop_prompt(
+        *,
+        now: datetime,
+        planning_context: str,
+        available_tools: List[Dict[str, Any]],
+        execution_history: List[Dict[str, Any]],
+        max_tasks: int,
+    ) -> str:
+        return f"""
+You are an AI agent that plans one next action at a time for a task management product.
+Current time: {now.isoformat(timespec="minutes")}
+
+Use this user context when planning:
+{planning_context}
+
+Available tools:
+{json.dumps(available_tools, ensure_ascii=False, indent=2)}
+
+Previous execution history:
+{json.dumps(execution_history, ensure_ascii=False, indent=2)}
+
+Return exactly one JSON object with this schema:
+{{
+  "goal_summary": "one-sentence summary of the user goal",
+  "project_theme": "short project theme",
+  "success_criteria": ["short completion criteria"],
+  "plan_rationale": "why this next action makes sense",
+  "risk_notes": ["execution or planning risks"],
+  "is_complete": false,
+  "completion_message": "optional completion note or null",
+  "planned_task": {{
+    "name": "concrete action",
+    "description": "clear execution details",
+    "priority": "low|medium|high",
+    "estimated_hours": 2.0,
+    "due_date": "optional ISO datetime or null"
+  }},
+  "tool_call": {{
+    "tool_name": "tool from available tools",
+    "arguments": {{}}
+  }}
+}}
+
+Rules:
+- Decide only the next best action, not the full project.
+- If the goal has already been sufficiently advanced based on execution history, set "is_complete" to true.
+- If "is_complete" is true, both "planned_task" and "tool_call" must be null.
+- If "is_complete" is false, return exactly one planned_task and one tool_call.
+- Prefer create_task when the user goal should become a tracked task.
+- Never invent tools outside the available tools list.
+- Keep the total number of created tasks bounded; the system will stop around {max_tasks} iterations.
 - Do not include markdown fences.
 """.strip()
 
