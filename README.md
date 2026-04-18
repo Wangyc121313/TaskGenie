@@ -1,60 +1,35 @@
 # TaskGenie
 
-TaskGenie is an AI-native task planning application built around a mobile client, a formal agent runtime, and an explainable planning API.
+TaskGenie 是一个任务规划应用，采用 `React Native + FastAPI` 的 monorepo 结构。  
+项目围绕三类典型场景展开：
 
-The current product focuses on three primary user flows:
+- 将自然语言目标拆解为可执行任务
+- 将图片或截图提取为任务候选
+- 基于现有任务生成日程安排
 
-- turn a natural-language goal into a list of executable tasks
-- turn an image or screenshot into candidate tasks
-- generate a day plan from existing tasks
+后端提供统一的 AI 运行时、工具调用、确认门控、执行轨迹和用户偏好/记忆管理；前端提供任务视图、日历视图、统一 Assistant 入口和 Profile/Memory 管理界面。
 
-This repository is organized as a monorepo so the mobile app and the API can evolve together in one place.
+## 功能特性
 
-## What This Project Is
+- 任务创建、编辑、删除、完成状态管理
+- 日历视图与按日期聚合任务
+- 文本目标转任务
+- 图片转任务
+- 日程规划与保存
+- Agent 执行轨迹与决策时间线
+- 用户偏好与长期记忆管理
+- 高影响写操作的确认执行
+- 本地评测 runner 与 CI
 
-TaskGenie is not just a CRUD todo app. It tries to turn vague user intent into structured execution:
-
-- users enter a goal in natural language
-- the backend calls an LLM to break it into tasks
-- the mobile app displays, edits, and tracks those tasks
-- users can ask the system to schedule a day automatically
-
-The current architecture now exposes a hand-rolled `Plan-and-Execute` runtime:
-
-- planner
-- policy / confirmation gate
-- executor
-- trace formatter
-- editable memory + preferences
-
-That makes the repo significantly closer to an AI agent portfolio project than a simple "LLM feature" demo.
-
-## Repository Layout
-
-```text
-TaskGenie/
-+-- apps/
-|   +-- mobile/   # React Native client
-|   +-- api/      # FastAPI backend
-+-- README.md
-```
-
-This layout is intentional:
-
-- keeping client and server separate is normal
-- putting both under `apps/` makes the monorepo easier to understand
-- the root should explain the product, not duplicate app-specific setup details
-
-## Tech Stack
+## 技术栈
 
 ### Mobile
 
 - React Native 0.79
 - React 19
-- Context API + hooks
+- Context API
+- Hooks
 - Fetch API
-- Unified Assistant tab
-- Profile + Memory management tab
 
 ### API
 
@@ -62,23 +37,86 @@ This layout is intentional:
 - Pydantic
 - SQLAlchemy
 - SQLite
-- OpenAI-compatible SDK
-- Hand-rolled agent runtime with confirmation gates
-- Structured trace + decision timeline
+- OpenAI-compatible API client
 
-## Current Capabilities
+### Runtime
 
-- task creation, update, deletion, and calendar view
-- AI task decomposition from free-form prompts
-- AI agent run preview and confirmation flow
-- AI day scheduling based on due date and priority
-- image-to-task extraction with multimodal input
-- user preferences and editable long-term memory
-- local persistence for tasks, schedules, and async AI jobs
+- Plan-and-Execute
+- 轻量迭代 loop
+- Tool Registry
+- Confirmation Gate
+- Structured Trace
+- Preferences / Memory Context
 
-## Run Locally
+### Engineering
 
-### 1. Start the API
+- Pytest
+- Jest
+- ESLint
+- GitHub Actions
+
+## 仓库结构
+
+```text
+TaskGenie/
+├─ apps/
+│  ├─ mobile/   # React Native 客户端
+│  └─ api/      # FastAPI 后端与 AI Runtime
+├─ docs/
+│  ├─ agent-architecture.md
+│  ├─ demo-walkthrough.md
+│  └─ plans/
+└─ README.md
+```
+
+## 后端架构概览
+
+后端围绕统一的 Agent Runtime 组织，核心模块包括：
+
+- `planner`
+  负责生成结构化计划或下一步动作
+
+- `executor`
+  负责执行工具调用并记录结果
+
+- `policy`
+  负责确认门控和执行策略
+
+- `trace_formatter`
+  负责整理前端可消费的响应和轨迹摘要
+
+- `tool_registry`
+  统一维护工具元信息、输入输出 schema 和副作用级别
+
+- `memory_service`
+  负责用户偏好、长期记忆和规划上下文构建
+
+## 环境变量
+
+API 服务通过 `apps/api/.env` 读取配置，可从 [apps/api/.env.example](C:/Users/22122/Documents/Playground/TaskGenie/apps/api/.env.example) 复制一份后修改。
+
+常用变量如下（以kimi k2.5 模型为例）：
+
+```env
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.moonshot.cn/v1
+OPENAI_MODEL=kimi-k2.5
+OPENAI_VISION_MODEL=kimi-k2.5
+API_HOST=0.0.0.0
+API_PORT=8000
+DEBUG=True
+```
+
+如果使用其他 OpenAI 兼容平台，只需替换：
+
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `OPENAI_MODEL`
+- `OPENAI_VISION_MODEL`
+
+## 本地运行
+
+### 1. 启动 API
 
 ```bash
 cd apps/api
@@ -88,9 +126,20 @@ pip install -r requirements.txt
 python run.py
 ```
 
-The API runs on `http://localhost:8000`.
+或使用：
 
-### 2. Start the mobile app
+```bash
+cd apps/api
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+默认地址：
+
+- API: `http://localhost:8000`
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+### 2. 启动移动端
 
 ```bash
 cd apps/mobile
@@ -98,63 +147,75 @@ npm install
 npm start
 ```
 
-In a second terminal:
+然后在新终端执行：
 
 ```bash
 cd apps/mobile
 npm run android
 ```
 
-Or:
+如果使用 Android 模拟器，后端地址默认走 `10.0.2.2:8000`。
+
+## 测试与评测
+
+### API 测试
+
+```bash
+cd apps/api
+python -m pytest tests -q
+```
+
+### Mobile 测试
 
 ```bash
 cd apps/mobile
-npm run ios
+npm test -- --watch=false
 ```
 
-## API Endpoint Configuration
+### Mobile lint
 
-The mobile app currently reads the backend URL from:
+```bash
+cd apps/mobile
+npm run lint:ci
+```
 
-`apps/mobile/src/context/TaskContext.js`
+### 离线评测
 
-Default values:
+```bash
+cd apps/api
+python evals/run_evals.py --mode offline --output evals/results/latest.json
+```
 
-- Android emulator: `http://10.0.2.2:8000`
-- iOS simulator: `http://localhost:8000`
+评测结果会输出到：
 
-## Why This Refactor
+[latest.json](C:/Users/22122/Documents/Playground/TaskGenie/apps/api/evals/results/latest.json)
 
-This repository originally came from two separate GitHub projects. After merging them, the structure still looked like a temporary migration.
+当前离线评测覆盖：
 
-This refactor fixes that:
+- `text_planning`
+- `image_task`
+- `memory_hit`
 
-- the root README now explains the product
-- the repository now uses an `apps/` layout instead of exposing raw `frontend/` and `backend/`
-- app-specific documentation stays inside each subproject
+## API 入口
 
-## Next Direction
+主要接口包括：
 
-The next major upgrades after this iteration are:
+- `POST /ai/agent/run`
+- `GET /ai/agent/runs/{job_id}`
+- `POST /ai/agent/runs/{job_id}/confirm`
+- `GET /ai/agent/tools`
+- `POST /ai/plan-tasks/async`
+- `POST /ai/plan-image/async`
+- `POST /ai/schedule-day/async`
+- `GET /tasks`
+- `GET /stats`
+- `GET /profile/preferences`
+- `GET /profile/memories`
 
-- automated eval runners over the local regression datasets
-- richer assistant UX polish and demo assets
-- deeper schedule confirmation and explanation
-- optional migration to a graph framework if the runtime graph grows
+## 文档
 
-## Recent Refactor
+更多说明见：
 
-The API codebase now uses a package layout instead of flat top-level modules:
-
-- `apps/api/app/main.py`
-- `apps/api/app/routers/`
-- `apps/api/app/services/`
-- `apps/api/app/db/`
-- `apps/api/app/models/`
-- `apps/api/tests/`
-
-## Architecture Docs
-
-- [Agent Architecture](docs/agent-architecture.md)
-- [Demo Walkthrough](docs/demo-walkthrough.md)
-- [Roadmap](docs/plans/2026-04-17-taskgenie-agent-fullstack-roadmap.md)
+- [Agent 架构说明](C:/Users/22122/Documents/Playground/TaskGenie/docs/agent-architecture.md)
+- [Demo 演示路径](C:/Users/22122/Documents/Playground/TaskGenie/docs/demo-walkthrough.md)
+- [Roadmap](C:/Users/22122/Documents/Playground/TaskGenie/docs/plans/2026-04-17-taskgenie-agent-fullstack-roadmap.md)

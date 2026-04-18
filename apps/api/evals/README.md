@@ -15,4 +15,24 @@ Suggested metrics:
 - tool execution success rate
 - memory hit relevance
 
-These files are designed for simple offline regression scripts and future CI hooks.
+These files are designed for a simple local runner and CI smoke checks.
+
+## Run Locally
+
+From `apps/api`:
+
+```bash
+python evals/run_evals.py --mode offline
+```
+
+This writes a summary file to:
+
+`evals/results/latest.json`
+
+Current offline coverage:
+
+- `text_planning`: dataset/schema readiness checks
+- `image_task`: dataset/schema readiness checks
+- `memory_hit`: local retrieval quality check against seeded memories
+
+The runner also emits structured eval log events through the same logging pipeline used by agent runs.

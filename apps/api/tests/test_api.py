@@ -9,11 +9,13 @@ from app.main import app
 from app.models.schemas import (
     AgentTaskPlanResult,
     AgentExecutionStatus,
+    AgentTextPlanningStep,
     AIJob,
     AIJobStatus,
     AgentRunMode,
     ImageTaskCandidate,
     ImageTaskExtractionResult,
+    PlannedToolCall,
     PlannedTask,
 )
 from app.agent.planner import AgentPlanner
@@ -211,30 +213,73 @@ class TestTaskGenieAPI:
         assert "Job not found." == response.json()["detail"]
 
     def test_ai_test_endpoint(self, monkeypatch):
-        def mock_plan_text_goal(**kwargs):
-            return AgentTaskPlanResult(
-                goal_summary="Break a testing goal into two execution tasks.",
-                project_theme="Testing",
-                success_criteria=["Tasks are created successfully."],
-                plan_rationale="Two tasks are enough to validate the workflow.",
-                risk_notes=[],
-                tasks=[
-                    PlannedTask(
+        def mock_plan_text_goal_step(**kwargs):
+            history = kwargs["execution_history"]
+            if len(history) == 0:
+                return AgentTextPlanningStep(
+                    goal_summary="Break a testing goal into two execution tasks.",
+                    project_theme="Testing",
+                    success_criteria=["Tasks are created successfully."],
+                    plan_rationale="Two tasks are enough to validate the workflow.",
+                    risk_notes=[],
+                    is_complete=False,
+                    planned_task=PlannedTask(
                         name="Write integration tests",
                         description="Cover the happy path of the API workflow.",
                         priority="high",
                         estimated_hours=1.5,
                     ),
-                    PlannedTask(
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Write integration tests",
+                                "description": "Cover the happy path of the API workflow.",
+                                "priority": "high",
+                                "estimated_hours": 1.5,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+            if len(history) == 1:
+                return AgentTextPlanningStep(
+                    goal_summary="Break a testing goal into two execution tasks.",
+                    project_theme="Testing",
+                    success_criteria=["Tasks are created successfully."],
+                    plan_rationale="A second task validates the response contract.",
+                    risk_notes=[],
+                    is_complete=False,
+                    planned_task=PlannedTask(
                         name="Verify agent response shape",
                         description="Confirm the endpoint returns the new agent fields.",
                         priority="medium",
                         estimated_hours=1.0,
                     ),
-                ],
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Verify agent response shape",
+                                "description": "Confirm the endpoint returns the new agent fields.",
+                                "priority": "medium",
+                                "estimated_hours": 1.0,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+            return AgentTextPlanningStep(
+                goal_summary="Break a testing goal into two execution tasks.",
+                project_theme="Testing",
+                success_criteria=["Tasks are created successfully."],
+                plan_rationale="The workflow has produced the expected tasks.",
+                risk_notes=[],
+                is_complete=True,
+                completion_message="Testing tasks already created.",
             )
 
-        monkeypatch.setattr(AgentPlanner, "plan_text_goal", mock_plan_text_goal)
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal_step", mock_plan_text_goal_step)
         response = client.post("/ai/plan-tasks/test?prompt=测试任务&max_tasks=2")
         assert response.status_code == 200
         data = response.json()
@@ -498,31 +543,80 @@ class TestTaskGenieAPI:
             estimated_hours=4.0,
         )
 
-        def mock_plan_text_goal(prompt: str, max_tasks: int, now: datetime, planning_context: str = ""):
+        def mock_plan_text_goal_step(
+            prompt: str,
+            now: datetime,
+            planning_context: str = "",
+            execution_history=None,
+            **_kwargs,
+        ):
             captured["planning_context"] = planning_context
-            return AgentTaskPlanResult(
-                goal_summary="Upgrade TaskGenie into an explainable agent workflow.",
-                project_theme="Agent Upgrade",
-                success_criteria=["Trace is stored", "Tool calls are exposed"],
-                plan_rationale="The project needs persistent trace visibility before broader UX work.",
-                risk_notes=["Legacy endpoints may expect the old job shape."],
-                tasks=[
-                    PlannedTask(
+            execution_history = execution_history or []
+            if len(execution_history) == 0:
+                return AgentTextPlanningStep(
+                    goal_summary="Upgrade TaskGenie into an explainable agent workflow.",
+                    project_theme="Agent Upgrade",
+                    success_criteria=["Trace is stored", "Tool calls are exposed"],
+                    plan_rationale="The project needs persistent trace visibility before broader UX work.",
+                    risk_notes=["Legacy endpoints may expect the old job shape."],
+                    is_complete=False,
+                    planned_task=PlannedTask(
                         name="Design workflow trace",
                         description="Persist planner and executor activity for every AI run.",
                         priority="high",
                         estimated_hours=2.0,
                     ),
-                    PlannedTask(
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Design workflow trace",
+                                "description": "Persist planner and executor activity for every AI run.",
+                                "priority": "high",
+                                "estimated_hours": 2.0,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+            if len(execution_history) == 1:
+                return AgentTextPlanningStep(
+                    goal_summary="Upgrade TaskGenie into an explainable agent workflow.",
+                    project_theme="Agent Upgrade",
+                    success_criteria=["Trace is stored", "Tool calls are exposed"],
+                    plan_rationale="Expose the trace after the first execution task exists.",
+                    risk_notes=["Legacy endpoints may expect the old job shape."],
+                    is_complete=False,
+                    planned_task=PlannedTask(
                         name="Expose trace in API",
                         description="Return planned tasks, tool calls, and execution status in job responses.",
                         priority="medium",
                         estimated_hours=1.5,
                     ),
-                ],
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Expose trace in API",
+                                "description": "Return planned tasks, tool calls, and execution status in job responses.",
+                                "priority": "medium",
+                                "estimated_hours": 1.5,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+            return AgentTextPlanningStep(
+                goal_summary="Upgrade TaskGenie into an explainable agent workflow.",
+                project_theme="Agent Upgrade",
+                success_criteria=["Trace is stored", "Tool calls are exposed"],
+                plan_rationale="The key workflow tasks have already been created.",
+                risk_notes=["Legacy endpoints may expect the old job shape."],
+                is_complete=True,
+                completion_message="Required workflow tasks already created.",
             )
 
-        monkeypatch.setattr(AgentPlanner, "plan_text_goal", mock_plan_text_goal)
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal_step", mock_plan_text_goal_step)
 
         job_id = "trace-job"
         db.create_ai_job(
@@ -559,7 +653,8 @@ class TestTaskGenieAPI:
         assert "High-priority open tasks: 1." in captured["planning_context"]
         assert len(job.trace.events) >= 6
         assert job.trace.events[0].event_type == "memory_loaded"
-        assert job.trace.events[1].event_type == "planning_completed"
+        assert job.trace.events[1].event_type == "planning_iteration_started"
+        assert any(event.event_type == "planning_completed" for event in job.trace.events)
         assert any(event.event_type == "execution_started" for event in job.trace.events)
         assert job.trace.events[-1].event_type == "run_completed"
         assert job.trace.events[-1].metadata["created_task_count"] == 2
@@ -618,3 +713,74 @@ class TestTaskGenieAPI:
         assert confirm_data["status"] == "completed"
         assert confirm_data["requires_confirmation"] is False
         assert len(confirm_data["artifacts"]["created_tasks"]) == 1
+
+    def test_agent_text_goal_runs_as_iterative_loop_with_tool_context(self, monkeypatch):
+        planner_calls = []
+
+        def mock_plan_text_goal_step(**kwargs):
+            planner_calls.append(kwargs)
+            if len(planner_calls) == 1:
+                return AgentTextPlanningStep(
+                    goal_summary="Ship an interview-ready TaskGenie update.",
+                    project_theme="Interview Prep",
+                    success_criteria=["One concrete task is created."],
+                    plan_rationale="Start by creating the highest-value implementation task.",
+                    risk_notes=[],
+                    is_complete=False,
+                    completion_message=None,
+                    planned_task=PlannedTask(
+                        name="Implement evaluation runner",
+                        description="Add a script that executes local eval datasets and reports summary metrics.",
+                        priority="high",
+                        estimated_hours=2.0,
+                    ),
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Implement evaluation runner",
+                                "description": "Add a script that executes local eval datasets and reports summary metrics.",
+                                "priority": "high",
+                                "estimated_hours": 2.0,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+
+            return AgentTextPlanningStep(
+                goal_summary="Ship an interview-ready TaskGenie update.",
+                project_theme="Interview Prep",
+                success_criteria=["One concrete task is created."],
+                plan_rationale="The first step has already been executed successfully.",
+                risk_notes=[],
+                is_complete=True,
+                completion_message="The initial actionable task has been created.",
+                planned_task=None,
+                tool_call=None,
+            )
+
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal_step", mock_plan_text_goal_step, raising=False)
+
+        response = client.post(
+            "/ai/agent/run",
+            json={
+                "mode": "text_goal",
+                "prompt": "Help me improve TaskGenie for AI agent interviews",
+                "max_tasks": 4,
+                "auto_execute": True,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert len(planner_calls) == 2
+        assert data["status"] == "completed"
+        assert data["trace_summary"]["executed_tool_count"] == 1
+        assert len(data["artifacts"]["created_tasks"]) == 1
+        assert planner_calls[0]["available_tools"]
+        assert any(tool["name"] == "create_task" for tool in planner_calls[0]["available_tools"])
+        assert planner_calls[0]["execution_history"] == []
+        assert len(planner_calls[1]["execution_history"]) == 1
+        assert planner_calls[1]["execution_history"][0]["tool_name"] == "create_task"
+        assert planner_calls[1]["execution_history"][0]["status"] == "completed"

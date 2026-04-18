@@ -142,6 +142,31 @@ class AgentTaskPlanResult(BaseModel):
     tasks: List[PlannedTask]
 
 
+class PlannedToolCall(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentExecutionObservation(BaseModel):
+    iteration: int
+    tool_name: str
+    status: Literal["completed", "failed"]
+    output: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class AgentTextPlanningStep(BaseModel):
+    goal_summary: str
+    project_theme: str
+    success_criteria: List[str] = Field(default_factory=list)
+    plan_rationale: str = ""
+    risk_notes: List[str] = Field(default_factory=list)
+    is_complete: bool = False
+    completion_message: Optional[str] = None
+    planned_task: Optional[PlannedTask] = None
+    tool_call: Optional[PlannedToolCall] = None
+
+
 class ImageTaskExtractionResult(BaseModel):
     scene_summary: str
     detected_context: str
