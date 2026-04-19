@@ -16,6 +16,9 @@ from app.models import (
     AgentRunRequest,
     ConversationSession,
     ToolDefinitionSchema,
+    MCPToolCallRequest,
+    MCPToolCallResponse,
+    MCPToolsListResponse,
 )
 from app.models.schemas import AgentRunMode, AgentRunResponse
 from app.services.ai_service import AIService
@@ -23,6 +26,7 @@ from app.services.tool_registry import task_tool_registry
 
 
 ai_router = APIRouter(prefix="/ai", tags=["ai"])
+mcp_router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 
 @ai_router.post("/agent/run", response_model=AgentRunResponse)
@@ -64,6 +68,25 @@ async def list_agent_tools():
     return [definition.to_schema() for definition in task_tool_registry.list_tools()]
 
 
+@mcp_router.get("/tools/list", response_model=MCPToolsListResponse)
+async def list_mcp_tools():
+    return MCPToolsListResponse(tools=task_tool_registry.list_mcp_tools())
+
+
+@mcp_router.post("/tools/call", response_model=MCPToolCallResponse)
+async def call_mcp_tool(request: MCPToolCallRequest):
+    try:
+        return task_tool_registry.call_mcp_tool(request.name, request.arguments)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown tool.") from exc
+    except Exception as exc:
+        return MCPToolCallResponse(
+            content=[{"type": "text", "text": str(exc)}],
+            structuredContent={"tool": request.name, "error": str(exc)},
+            isError=True,
+        )
+
+
 @ai_router.post("/plan-tasks/async")
 async def ai_plan_tasks_async(request: AITaskRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid4())
@@ -99,6 +122,7 @@ async def ai_plan_image_async(background_tasks: BackgroundTasks, request: AIImag
         image_mime_type=request.image_mime_type,
         filename=request.filename or "upload-image",
         notes=request.notes,
+        conversation_id=request.conversation_id,
         max_tasks=max(0, min(10, request.max_tasks)),
         auto_create=request.auto_create,
     )
@@ -134,6 +158,7 @@ async def ai_schedule_day_async(
         request.date,
         request.task_ids,
         force_regenerate,
+        request.conversation_id,
     )
     return {"job_id": job_id, "status": "processing"}
 
@@ -237,6 +262,7 @@ async def _run_image_planning_sync(request: AIImageTaskRequest):
             image_mime_type=request.image_mime_type,
             filename=request.filename or "upload-image",
             notes=request.notes,
+            conversation_id=request.conversation_id,
             max_tasks=max(0, min(10, request.max_tasks)),
             auto_execute=request.auto_create,
         ),

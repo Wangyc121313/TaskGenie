@@ -16,6 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from app.core.config import current_settings
 from app.models.schemas import (
     AIJob,
     AIJobStatus,
@@ -28,8 +29,21 @@ from app.models.schemas import (
 )
 
 
-DATABASE_URL = "sqlite:///./taskgenie.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DEFAULT_SQLITE_DATABASE_URL = "sqlite:///./taskgenie.db"
+
+
+def resolve_database_url(database_url: Optional[str]) -> str:
+    return database_url or DEFAULT_SQLITE_DATABASE_URL
+
+
+def build_engine_options(database_url: str) -> dict:
+    if database_url.startswith("sqlite"):
+        return {"connect_args": {"check_same_thread": False}}
+    return {}
+
+
+DATABASE_URL = resolve_database_url(current_settings.DATABASE_URL)
+engine = create_engine(DATABASE_URL, **build_engine_options(DATABASE_URL))
 SessionLocal = sessionmaker(bind=engine)
 
 

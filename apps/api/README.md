@@ -22,7 +22,7 @@ scheduling.
 - FastAPI
 - Pydantic
 - SQLAlchemy
-- SQLite
+- PostgreSQL / SQLite
 - OpenAI-compatible API client
 
 ## Environment
@@ -38,6 +38,7 @@ Important variables:
 - `DATABASE_URL`
 
 The repo keeps only `.env.example`; your real `.env` stays local.
+`DATABASE_URL` supports PostgreSQL and SQLite. If it is omitted, the API falls back to the local SQLite file.
 
 ## Development
 
@@ -69,5 +70,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 - `app/models/schemas.py`: Pydantic schemas and enums
 - `app/core/config.py`: environment-driven settings
 - `app/core/logging_utils.py`: structured agent logging helpers
+- `app/services/conversation_service.py`: multi-turn summary persistence and compression
+- `app/services/tool_registry.py`: internal tools and MCP-compatible bridge metadata
 - `tests/test_api.py`: API regression test suite
 - `evals/`: lightweight regression datasets for planning, image extraction, and memory

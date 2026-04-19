@@ -23,6 +23,7 @@ class AIService:
         image_mime_type: str,
         filename: str,
         notes: str,
+        conversation_id: str | None = None,
         max_tasks: int,
         auto_create: bool,
     ):
@@ -36,6 +37,7 @@ class AIService:
                 image_mime_type=image_mime_type,
                 filename=filename,
                 notes=notes,
+                conversation_id=conversation_id,
                 max_tasks=max_tasks,
                 auto_execute=auto_create,
             ),
@@ -47,6 +49,7 @@ class AIService:
         date_str: str,
         task_ids=None,
         force_regenerate: bool = False,
+        conversation_id: str | None = None,
     ):
         await AgentRuntime.run(
             job_id,
@@ -54,6 +57,7 @@ class AIService:
                 mode=AgentRunMode.SCHEDULE_DAY,
                 date=date_str,
                 task_ids=task_ids,
+                conversation_id=conversation_id,
                 force_regenerate=force_regenerate,
                 auto_execute=True,
             ),

@@ -130,6 +130,7 @@ class AgentPlanner:
         target_date: date,
         task_ids: Optional[List[str]],
         force_regenerate: bool,
+        planning_context: str = "",
     ) -> Tuple[DaySchedule, bool]:
         if task_ids:
             tasks_to_schedule = []
@@ -163,7 +164,11 @@ class AgentPlanner:
             if existing_schedule and existing_schedule.task_version == current_task_version:
                 return existing_schedule, False
 
-        generated = AgentPlanner._generate_day_schedule(tasks_to_schedule, target_date)
+        generated = AgentPlanner._generate_day_schedule(
+            tasks_to_schedule,
+            target_date,
+            planning_context=planning_context,
+        )
         schedule = DaySchedule(
             id=None,
             date=target_date,
@@ -189,7 +194,7 @@ class AgentPlanner:
         return hashlib.md5("|".join(task_info).encode()).hexdigest()
 
     @staticmethod
-    def _generate_day_schedule(tasks: List[Task], target_date: date) -> dict:
+    def _generate_day_schedule(tasks: List[Task], target_date: date, *, planning_context: str) -> dict:
         tasks_payload = [
             {
                 "id": task.id,
@@ -207,6 +212,7 @@ class AgentPlanner:
             system_prompt=AgentPlanner._build_day_schedule_system_prompt(
                 str(target_date),
                 [task["id"] for task in tasks_payload],
+                planning_context=planning_context,
             ),
             user_prompt=f"Tasks to schedule:\n{tasks_payload}",
             response_model=DayScheduleGenerationResult,
@@ -379,10 +385,19 @@ Requirements:
         return f"Image filename: {filename}\nExtract actionable tasks from the image."
 
     @staticmethod
-    def _build_day_schedule_system_prompt(target_date: str, task_ids: List[str]) -> str:
+    def _build_day_schedule_system_prompt(
+        target_date: str,
+        task_ids: List[str],
+        *,
+        planning_context: str,
+    ) -> str:
         return f"""
 You are an AI scheduling assistant.
 Schedule tasks for {target_date}.
+
+Use this user context when choosing order, timing, and suggestions:
+{planning_context}
+
 Return exactly one JSON object with this schema:
 {{
   "schedule": [

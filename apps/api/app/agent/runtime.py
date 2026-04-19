@@ -637,12 +637,22 @@ class AgentRuntime:
 
         from app.routers.ai import _decode_and_validate_image
 
+        prompt = (request.notes or request.filename or "image-input").strip()
+        trace.source_prompt = prompt
+        conversation = ConversationService.get_or_create_conversation(
+            request.conversation_id,
+            initial_prompt=prompt,
+        )
+        trace.conversation_id = conversation.conversation_id
+        trace.conversation_turn_count = len(conversation.turns)
+        trace.conversation_summary = conversation.running_summary
+        conversation_context = ConversationService.build_context(conversation)
         image_bytes = _decode_and_validate_image(
             image_base64=request.image_base64,
             content_type=request.image_mime_type,
         )
         planning_context = MemoryService.build_planning_context(
-            prompt=request.notes or request.filename or "image-input"
+            prompt=prompt
         )
         trace.preference_snapshot = planning_context.preferences
         trace.relevant_memories = planning_context.relevant_memories
@@ -667,7 +677,10 @@ class AgentRuntime:
             filename=request.filename or "upload-image",
             notes=request.notes,
             max_tasks=max(0, min(10, request.max_tasks)),
-            planning_context=planning_context.prompt_context,
+            planning_context=AgentRuntime._merge_planning_contexts(
+                planning_context.prompt_context,
+                conversation_context,
+            ),
         )
         trace.goal_summary = extraction.scene_summary
         trace.project_theme = extraction.detected_context
@@ -732,6 +745,11 @@ class AgentRuntime:
                 strategy=trace.strategy.value,
                 tool_call_count=len(trace.tool_calls),
             )
+            AgentRuntime._upsert_conversation_turn(
+                trace=trace,
+                job_id=job_id,
+                status=ConversationTurnStatus.AWAITING_CONFIRMATION,
+            )
             return AgentRuntime._update_job(
                 job_id,
                 status=AIJobStatus.AWAITING_CONFIRMATION,
@@ -785,6 +803,11 @@ class AgentRuntime:
         result_payload["final_result"] = {
             "created_tasks": [task.model_dump(mode="json") for task in trace.created_tasks]
         }
+        AgentRuntime._upsert_conversation_turn(
+            trace=trace,
+            job_id=job_id,
+            status=ConversationTurnStatus.COMPLETED,
+        )
         return AgentRuntime._update_job(
             job_id,
             status=AIJobStatus.COMPLETED,
@@ -798,11 +821,30 @@ class AgentRuntime:
         if not request.date:
             raise ValueError("date is required for schedule_day mode.")
 
+        prompt = f"Build a schedule for {request.date}"
+        trace.source_prompt = prompt
+        conversation = ConversationService.get_or_create_conversation(
+            request.conversation_id,
+            initial_prompt=prompt,
+        )
+        trace.conversation_id = conversation.conversation_id
+        trace.conversation_turn_count = len(conversation.turns)
+        trace.conversation_summary = conversation.running_summary
+        conversation_context = ConversationService.build_context(conversation)
+        planning_context = MemoryService.build_planning_context(prompt=prompt)
+        trace.preference_snapshot = planning_context.preferences
+        trace.relevant_memories = planning_context.relevant_memories
+        trace.behavior_summary = planning_context.behavior_summary
+
         target_date = datetime.strptime(request.date, "%Y-%m-%d").date()
         schedule, regenerated = AgentPlanner.plan_day_schedule(
             target_date=target_date,
             task_ids=request.task_ids,
             force_regenerate=request.force_regenerate,
+            planning_context=AgentRuntime._merge_planning_contexts(
+                planning_context.prompt_context,
+                conversation_context,
+            ),
         )
         trace.goal_summary = f"Build an executable day schedule for {request.date}."
         trace.project_theme = f"Schedule {request.date}"
@@ -843,6 +885,11 @@ class AgentRuntime:
             strategy=trace.strategy.value,
             regenerated=regenerated,
             suggestion_count=len(schedule.suggestions),
+        )
+        AgentRuntime._upsert_conversation_turn(
+            trace=trace,
+            job_id=job_id,
+            status=ConversationTurnStatus.COMPLETED,
         )
         return AgentRuntime._update_job(
             job_id,
@@ -975,6 +1022,12 @@ class AgentRuntime:
             definition.to_schema().model_dump(mode="json")
             for definition in task_tool_registry.list_tools()
         ]
+
+    @staticmethod
+    def _merge_planning_contexts(memory_context: str, conversation_context: str) -> str:
+        if not conversation_context:
+            return memory_context
+        return f"{memory_context}\n\n{conversation_context}".strip()
 
     @staticmethod
     def _build_tool_call_trace(tool_name: str, arguments: Dict[str, Any]) -> AgentToolCallTrace:

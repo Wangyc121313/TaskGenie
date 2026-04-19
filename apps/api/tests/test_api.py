@@ -869,3 +869,238 @@ class TestTaskGenieAPI:
         assert conversation_data["conversation_id"] == conversation_id
         assert conversation_data["turn_count"] == 2
         assert len(conversation_data["turns"]) == 2
+
+    def test_agent_image_goal_reuses_conversation_summary(self, monkeypatch):
+        text_planning_contexts = []
+        image_planning_contexts = []
+
+        def mock_plan_text_goal_step(**kwargs):
+            text_planning_contexts.append(kwargs["planning_context"])
+            execution_history = kwargs["execution_history"]
+            if not execution_history:
+                return AgentTextPlanningStep(
+                    goal_summary="Prepare a launch sequence.",
+                    project_theme="Conversation Image",
+                    success_criteria=["One prep task exists."],
+                    plan_rationale="Create a tracked launch-prep task before image analysis.",
+                    risk_notes=[],
+                    is_complete=False,
+                    planned_task=PlannedTask(
+                        name="Draft launch prep checklist",
+                        description="Create an initial preparation task.",
+                        priority="high",
+                        estimated_hours=1.0,
+                    ),
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Draft launch prep checklist",
+                                "description": "Create an initial preparation task.",
+                                "priority": "high",
+                                "estimated_hours": 1.0,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+
+            return AgentTextPlanningStep(
+                goal_summary="Prepare a launch sequence.",
+                project_theme="Conversation Image",
+                success_criteria=["One prep task exists."],
+                plan_rationale="The first tracked task is enough for this turn.",
+                risk_notes=[],
+                is_complete=True,
+                completion_message="Conversation seed created.",
+            )
+
+        def mock_extract_image_tasks(**kwargs):
+            image_planning_contexts.append(kwargs["planning_context"])
+            return ImageTaskExtractionResult(
+                scene_summary="A screenshot with launch todos.",
+                detected_context="Launch Board",
+                tasks=[
+                    ImageTaskCandidate(
+                        name="Review launch blockers",
+                        description="Turn the screenshot notes into a tracked review task.",
+                        priority="high",
+                        estimated_hours=1.0,
+                        confidence=0.9,
+                        source_snippet="launch blockers",
+                    )
+                ],
+            )
+
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal_step", mock_plan_text_goal_step)
+        monkeypatch.setattr(AgentPlanner, "extract_image_tasks", mock_extract_image_tasks)
+
+        first_response = client.post(
+            "/ai/agent/run",
+            json={
+                "mode": "text_goal",
+                "prompt": "Plan my launch preparation tasks",
+                "auto_execute": True,
+            },
+        )
+        assert first_response.status_code == 200
+        conversation_id = first_response.json()["trace_summary"]["conversation_id"]
+        assert conversation_id
+
+        encoded_image = base64.b64encode(b"fake-image-bytes").decode("utf-8")
+        second_response = client.post(
+            "/ai/plan-image/sync",
+            json={
+                "image_base64": encoded_image,
+                "image_mime_type": "image/png",
+                "filename": "launch.png",
+                "notes": "Use this image as the next turn",
+                "conversation_id": conversation_id,
+                "max_tasks": 2,
+                "auto_create": False,
+            },
+        )
+        assert second_response.status_code == 200
+        data = second_response.json()
+        assert data["trace"]["conversation_id"] == conversation_id
+        assert data["trace"]["conversation_turn_count"] == 2
+        assert "Conversation summary" in image_planning_contexts[0]
+        assert "Plan my launch preparation tasks" in image_planning_contexts[0]
+
+    def test_agent_schedule_goal_reuses_conversation_summary(self, monkeypatch):
+        schedule_contexts = []
+
+        def mock_plan_text_goal_step(**kwargs):
+            execution_history = kwargs["execution_history"]
+            if not execution_history:
+                return AgentTextPlanningStep(
+                    goal_summary="Set up a study schedule.",
+                    project_theme="Conversation Schedule",
+                    success_criteria=["One study task exists."],
+                    plan_rationale="Create the first study task before scheduling.",
+                    risk_notes=[],
+                    is_complete=False,
+                    planned_task=PlannedTask(
+                        name="Create study block",
+                        description="Track one study task before arranging the day.",
+                        priority="high",
+                        estimated_hours=1.0,
+                    ),
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Create study block",
+                                "description": "Track one study task before arranging the day.",
+                                "priority": "high",
+                                "estimated_hours": 1.0,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+
+            return AgentTextPlanningStep(
+                goal_summary="Set up a study schedule.",
+                project_theme="Conversation Schedule",
+                success_criteria=["One study task exists."],
+                plan_rationale="The first study task is enough for this turn.",
+                risk_notes=[],
+                is_complete=True,
+                completion_message="Conversation seed created.",
+            )
+
+        def mock_plan_day_schedule(**kwargs):
+            schedule_contexts.append(kwargs["planning_context"])
+            target_date = kwargs["target_date"]
+            return (
+                db.get_day_schedule(target_date.isoformat())
+                or {
+                    "unexpected": "This placeholder should never be returned"
+                },
+                False,
+            )
+
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal_step", mock_plan_text_goal_step)
+
+        study_task = self._create_task(
+            name="Study distributed systems",
+            due_date=(datetime.now() + timedelta(days=1)).isoformat(),
+            estimated_hours=2.0,
+        )
+
+        from app.models.schemas import DaySchedule, TaskScheduleItem
+
+        schedule_date = (datetime.now() + timedelta(days=1)).date()
+        db.create_day_schedule(
+            schedule_date.isoformat(),
+            DaySchedule(
+                id=None,
+                date=schedule_date,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                schedule_items=[
+                    TaskScheduleItem(
+                        task_id=study_task["id"],
+                        task_name=study_task["name"],
+                        start_time="09:00",
+                        end_time="11:00",
+                        duration=2.0,
+                        priority="high",
+                        reason="Focus block",
+                    )
+                ],
+                suggestions=["Protect the morning for deep work."],
+                total_hours=2.0,
+                efficiency_score=8,
+                task_version="seed-version",
+            ),
+        )
+
+        first_response = client.post(
+            "/ai/agent/run",
+            json={
+                "mode": "text_goal",
+                "prompt": "Help me organize tomorrow's study plan",
+                "auto_execute": True,
+            },
+        )
+        assert first_response.status_code == 200
+        conversation_id = first_response.json()["trace_summary"]["conversation_id"]
+        assert conversation_id
+
+        monkeypatch.setattr(AgentPlanner, "plan_day_schedule", mock_plan_day_schedule)
+
+        second_response = client.post(
+            "/ai/agent/run",
+            json={
+                "mode": "schedule_day",
+                "date": schedule_date.isoformat(),
+                "conversation_id": conversation_id,
+            },
+        )
+        assert second_response.status_code == 200
+        data = second_response.json()
+        assert data["trace_summary"]["conversation_id"] == conversation_id
+        assert data["trace_summary"]["conversation_turn_count"] == 2
+        assert "Conversation summary" in schedule_contexts[0]
+        assert "Help me organize tomorrow's study plan" in schedule_contexts[0]
+
+    def test_mcp_tool_bridge_exposes_and_executes_tools(self):
+        self._create_task(name="Bridge MCP task", priority="high")
+
+        list_response = client.get("/mcp/tools/list")
+        assert list_response.status_code == 200
+        list_data = list_response.json()
+        assert "tools" in list_data
+        assert any(tool["name"] == "list_tasks" for tool in list_data["tools"])
+
+        call_response = client.post(
+            "/mcp/tools/call",
+            json={"name": "list_tasks", "arguments": {}},
+        )
+        assert call_response.status_code == 200
+        call_data = call_response.json()
+        assert call_data["isError"] is False
+        assert call_data["structuredContent"]["tool"] == "list_tasks"
+        assert len(call_data["structuredContent"]["result"]) == 1
