@@ -19,6 +19,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from app.models.schemas import (
     AIJob,
     AIJobStatus,
+    ConversationSession,
     DaySchedule,
     Task,
     TaskStatus,
@@ -85,6 +86,15 @@ class UserMemoryORM(Base):
     data = Column(Text, nullable=False)
 
 
+class ConversationSessionORM(Base):
+    __tablename__ = "conversation_sessions"
+
+    conversation_id = Column(String, primary_key=True)
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+    data = Column(Text, nullable=False)
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -131,6 +141,10 @@ def _preferences_orm_to_pydantic(row: UserPreferenceORM) -> UserPreferences:
 
 def _memory_orm_to_pydantic(row: UserMemoryORM) -> UserMemoryItem:
     return UserMemoryItem.model_validate_json(row.data)
+
+
+def _conversation_orm_to_pydantic(row: ConversationSessionORM) -> ConversationSession:
+    return ConversationSession.model_validate_json(row.data)
 
 
 class SQLiteDatabase:
@@ -327,6 +341,30 @@ class SQLiteDatabase:
             session.commit()
         return True
 
+    def get_conversation(self, conversation_id: str) -> Optional[ConversationSession]:
+        with self._get_session() as session:
+            row = session.get(ConversationSessionORM, conversation_id)
+            return _conversation_orm_to_pydantic(row) if row else None
+
+    def upsert_conversation(self, conversation: ConversationSession) -> ConversationSession:
+        with self._get_session() as session:
+            row = session.get(ConversationSessionORM, conversation.conversation_id)
+            data_json = conversation.model_dump_json()
+            if row:
+                row.updated_at = conversation.updated_at
+                row.data = data_json
+            else:
+                session.add(
+                    ConversationSessionORM(
+                        conversation_id=conversation.conversation_id,
+                        created_at=conversation.created_at,
+                        updated_at=conversation.updated_at,
+                        data=data_json,
+                    )
+                )
+            session.commit()
+        return conversation
+
     def clear_all(self):
         with self._get_session() as session:
             session.query(TaskORM).delete()
@@ -334,6 +372,7 @@ class SQLiteDatabase:
             session.query(DayScheduleORM).delete()
             session.query(UserPreferenceORM).delete()
             session.query(UserMemoryORM).delete()
+            session.query(ConversationSessionORM).delete()
             session.commit()
 
 

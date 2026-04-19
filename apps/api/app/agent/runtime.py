@@ -12,6 +12,7 @@ from app.core.logging_utils import log_agent_event
 from app.models.schemas import (
     AIJob,
     AIJobStatus,
+    ConversationTurnStatus,
     AgentDecisionStatus,
     AgentDecisionTrace,
     AgentExecutionStatus,
@@ -25,6 +26,7 @@ from app.models.schemas import (
     AgentTaskPlanResult,
     TaskPlanningTrace,
 )
+from app.services.conversation_service import ConversationService
 from app.services.memory_service import MemoryService
 from app.services.tool_registry import task_tool_registry
 
@@ -82,6 +84,11 @@ class AgentRuntime:
                 strategy=trace.strategy.value,
                 current_step=trace.current_step,
                 error=str(exc),
+            )
+            AgentRuntime._upsert_conversation_turn(
+                trace=trace,
+                job_id=job_id,
+                status=ConversationTurnStatus.FAILED,
             )
             return AgentRuntime._update_job(
                 job_id,
@@ -177,6 +184,11 @@ class AgentRuntime:
         result_payload["final_result"] = {
             "created_tasks": [task.model_dump(mode="json") for task in trace.created_tasks]
         }
+        AgentRuntime._upsert_conversation_turn(
+            trace=trace,
+            job_id=job_id,
+            status=ConversationTurnStatus.COMPLETED,
+        )
         return AgentRuntime._update_job(
             job_id,
             status=AIJobStatus.COMPLETED,
@@ -191,7 +203,16 @@ class AgentRuntime:
             raise ValueError("Prompt is required for text_goal mode.")
 
         prompt = request.prompt.strip()
+        trace.source_prompt = prompt
         now = datetime.now()
+        conversation = ConversationService.get_or_create_conversation(
+            request.conversation_id,
+            initial_prompt=prompt,
+        )
+        trace.conversation_id = conversation.conversation_id
+        trace.conversation_turn_count = len(conversation.turns)
+        conversation_context = ConversationService.build_context(conversation)
+        trace.conversation_summary = conversation.running_summary
         planning_context = MemoryService.build_planning_context(prompt=prompt)
         trace.task_type = AgentPlanner.analyze_task_type(prompt)
         trace.preference_snapshot = planning_context.preferences
@@ -218,6 +239,9 @@ class AgentRuntime:
             action="Build text planning context",
             observation=f"Matched {len(planning_context.relevant_memories)} memories",
         )
+        combined_planning_context = planning_context.prompt_context
+        if conversation_context:
+            combined_planning_context = f"{combined_planning_context}\n\n{conversation_context}".strip()
 
         if request.auto_execute:
             return AgentRuntime._run_text_goal_iteratively(
@@ -225,7 +249,7 @@ class AgentRuntime:
                 request=request,
                 trace=trace,
                 prompt=prompt,
-                planning_context=planning_context.prompt_context,
+                planning_context=combined_planning_context,
             )
 
         trace.current_step = "planning"
@@ -234,7 +258,7 @@ class AgentRuntime:
             prompt=prompt,
             max_tasks=max(1, min(10, request.max_tasks)),
             now=now,
-            planning_context=planning_context.prompt_context,
+            planning_context=combined_planning_context,
         )
         planning_latency_ms = int((time.perf_counter() - planning_started) * 1000)
         trace.goal_summary = plan.goal_summary
@@ -329,6 +353,11 @@ class AgentRuntime:
                 strategy=trace.strategy.value,
                 tool_call_count=len(trace.tool_calls),
             )
+            AgentRuntime._upsert_conversation_turn(
+                trace=trace,
+                job_id=job_id,
+                status=ConversationTurnStatus.AWAITING_CONFIRMATION,
+            )
             return AgentRuntime._update_job(
                 job_id,
                 status=AIJobStatus.AWAITING_CONFIRMATION,
@@ -382,6 +411,11 @@ class AgentRuntime:
         result_payload["final_result"] = {
             "created_tasks": [task.model_dump(mode="json") for task in trace.created_tasks]
         }
+        AgentRuntime._upsert_conversation_turn(
+            trace=trace,
+            job_id=job_id,
+            status=ConversationTurnStatus.COMPLETED,
+        )
         return AgentRuntime._update_job(
             job_id,
             status=AIJobStatus.COMPLETED,
@@ -583,6 +617,11 @@ class AgentRuntime:
                 "completion_message": completion_message,
             },
         }
+        AgentRuntime._upsert_conversation_turn(
+            trace=trace,
+            job_id=job_id,
+            status=ConversationTurnStatus.COMPLETED,
+        )
         return AgentRuntime._update_job(
             job_id,
             status=AIJobStatus.COMPLETED,
@@ -950,6 +989,44 @@ class AgentRuntime:
             requires_confirmation=definition.requires_confirmation,
             retryable=definition.retryable,
         )
+
+    @staticmethod
+    def _upsert_conversation_turn(
+        *,
+        trace: TaskPlanningTrace,
+        job_id: str,
+        status: ConversationTurnStatus,
+    ) -> None:
+        if not trace.conversation_id or not trace.source_prompt:
+            return
+
+        session = ConversationService.upsert_turn(
+            conversation_id=trace.conversation_id,
+            job_id=job_id,
+            user_message=trace.source_prompt,
+            goal_summary=trace.goal_summary,
+            agent_summary=AgentRuntime._build_conversation_turn_summary(trace),
+            status=status,
+            created_task_count=len(trace.created_tasks),
+        )
+        trace.conversation_turn_count = len(session.turns)
+        trace.conversation_summary = session.running_summary
+
+    @staticmethod
+    def _build_conversation_turn_summary(trace: TaskPlanningTrace) -> str:
+        if trace.execution_status == AgentExecutionStatus.FAILED:
+            return "The run failed before producing a stable result."
+        if trace.created_tasks:
+            return (
+                f"{trace.goal_summary or 'Processed the user goal.'} "
+                f"Created {len(trace.created_tasks)} task(s)."
+            )
+        if trace.current_step == "awaiting_confirmation":
+            return (
+                f"{trace.goal_summary or 'Processed the user goal.'} "
+                f"Generated {len(trace.planned_tasks)} planned task(s) and is awaiting confirmation."
+            )
+        return trace.goal_summary or "Processed the user goal."
 
     @staticmethod
     def _append_decision(

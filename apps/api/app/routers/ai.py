@@ -14,6 +14,7 @@ from app.models import (
     AIJobStatus,
     AITaskRequest,
     AgentRunRequest,
+    ConversationSession,
     ToolDefinitionSchema,
 )
 from app.models.schemas import AgentRunMode, AgentRunResponse
@@ -37,6 +38,14 @@ async def get_agent_run(job_id: str):
         return AgentRuntime.get_response(job_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Agent run not found.") from exc
+
+
+@ai_router.get("/conversations/{conversation_id}", response_model=ConversationSession)
+async def get_agent_conversation(conversation_id: str):
+    conversation = db.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return conversation
 
 
 @ai_router.post("/agent/runs/{job_id}/confirm", response_model=AgentRunResponse)
