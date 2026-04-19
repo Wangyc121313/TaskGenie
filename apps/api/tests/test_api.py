@@ -784,3 +784,88 @@ class TestTaskGenieAPI:
         assert len(planner_calls[1]["execution_history"]) == 1
         assert planner_calls[1]["execution_history"][0]["tool_name"] == "create_task"
         assert planner_calls[1]["execution_history"][0]["status"] == "completed"
+
+    def test_agent_run_persists_and_reuses_conversation_summary(self, monkeypatch):
+        planning_contexts = []
+
+        def mock_plan_text_goal_step(**kwargs):
+            planning_contexts.append(kwargs["planning_context"])
+            execution_history = kwargs["execution_history"]
+            if not execution_history:
+                return AgentTextPlanningStep(
+                    goal_summary=f"Handle goal: {kwargs['prompt']}",
+                    project_theme="Conversation Test",
+                    success_criteria=["A single task is created."],
+                    plan_rationale="Create one tracked task before finishing the turn.",
+                    risk_notes=[],
+                    is_complete=False,
+                    planned_task=PlannedTask(
+                        name="Create a follow-up task",
+                        description="Persist one task so the turn has a concrete outcome.",
+                        priority="high",
+                        estimated_hours=1.0,
+                    ),
+                    tool_call=PlannedToolCall(
+                        tool_name="create_task",
+                        arguments={
+                            "task_data": {
+                                "name": "Create a follow-up task",
+                                "description": "Persist one task so the turn has a concrete outcome.",
+                                "priority": "high",
+                                "estimated_hours": 1.0,
+                                "due_date": None,
+                            }
+                        },
+                    ),
+                )
+
+            return AgentTextPlanningStep(
+                goal_summary=f"Handle goal: {kwargs['prompt']}",
+                project_theme="Conversation Test",
+                success_criteria=["A single task is created."],
+                plan_rationale="The turn already produced its concrete task.",
+                risk_notes=[],
+                is_complete=True,
+                completion_message="Conversation turn is complete.",
+            )
+
+        monkeypatch.setattr(AgentPlanner, "plan_text_goal_step", mock_plan_text_goal_step)
+
+        first_response = client.post(
+            "/ai/agent/run",
+            json={
+                "mode": "text_goal",
+                "prompt": "Plan my AI portfolio tasks for this week",
+                "auto_execute": True,
+            },
+        )
+        assert first_response.status_code == 200
+        first_data = first_response.json()
+        conversation_id = first_data["trace_summary"]["conversation_id"]
+        assert conversation_id
+        assert first_data["trace_summary"]["conversation_turn_count"] == 1
+
+        second_response = client.post(
+            "/ai/agent/run",
+            json={
+                "mode": "text_goal",
+                "prompt": "Now help me continue with interview preparation",
+                "conversation_id": conversation_id,
+                "auto_execute": True,
+            },
+        )
+        assert second_response.status_code == 200
+        second_data = second_response.json()
+        assert second_data["trace_summary"]["conversation_id"] == conversation_id
+        assert second_data["trace_summary"]["conversation_turn_count"] == 2
+
+        second_run_context = planning_contexts[2]
+        assert "Conversation summary" in second_run_context
+        assert "Plan my AI portfolio tasks for this week" in second_run_context
+
+        conversation_response = client.get(f"/ai/conversations/{conversation_id}")
+        assert conversation_response.status_code == 200
+        conversation_data = conversation_response.json()
+        assert conversation_data["conversation_id"] == conversation_id
+        assert conversation_data["turn_count"] == 2
+        assert len(conversation_data["turns"]) == 2

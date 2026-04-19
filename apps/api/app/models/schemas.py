@@ -58,6 +58,12 @@ class AgentDecisionStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class ConversationTurnStatus(str, Enum):
+    COMPLETED = "completed"
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
+    FAILED = "failed"
+
+
 class Task(BaseModel):
     id: Optional[str] = None
     name: str
@@ -300,6 +306,27 @@ class UserPlanningContext(BaseModel):
     prompt_context: str = ""
 
 
+class ConversationTurn(BaseModel):
+    turn_id: str
+    job_id: Optional[str] = None
+    user_message: str
+    agent_summary: str = ""
+    goal_summary: Optional[str] = None
+    status: ConversationTurnStatus = ConversationTurnStatus.COMPLETED
+    created_task_count: int = 0
+    created_at: datetime
+
+
+class ConversationSession(BaseModel):
+    conversation_id: str
+    title: Optional[str] = None
+    running_summary: str = ""
+    turn_count: int = 0
+    turns: List[ConversationTurn] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
 class TaskPlanningTrace(BaseModel):
     trace_id: Optional[str] = None
     strategy: AgentStrategy = AgentStrategy.PLAN_EXECUTE
@@ -307,6 +334,7 @@ class TaskPlanningTrace(BaseModel):
     current_step: str = "queued"
     requires_confirmation: bool = False
     input_modality: Literal["text", "image"] = "text"
+    source_prompt: Optional[str] = None
     task_type: Optional[str] = None
     goal_summary: Optional[str] = None
     project_theme: Optional[str] = None
@@ -319,6 +347,9 @@ class TaskPlanningTrace(BaseModel):
     finished_at: Optional[datetime] = None
     events: List[AgentTraceEvent] = Field(default_factory=list)
     decision_trace: List[AgentDecisionTrace] = Field(default_factory=list)
+    conversation_id: Optional[str] = None
+    conversation_summary: str = ""
+    conversation_turn_count: int = 0
     preference_snapshot: Optional[UserPreferences] = None
     relevant_memories: List[UserMemoryItem] = Field(default_factory=list)
     behavior_summary: str = ""
@@ -385,6 +416,7 @@ class TagsResponse(BaseModel):
 class AgentRunRequest(BaseModel):
     mode: AgentRunMode
     prompt: Optional[str] = None
+    conversation_id: Optional[str] = None
     max_tasks: int = 5
     notes: str = ""
     image_base64: Optional[str] = None
@@ -422,6 +454,9 @@ class AgentRunSummary(BaseModel):
     executed_tool_count: int = 0
     created_task_count: int = 0
     used_memory_count: int = 0
+    conversation_id: Optional[str] = None
+    conversation_turn_count: int = 0
+    conversation_summary: str = ""
     improvement_notes: List[str] = Field(default_factory=list)
     timeline: List[AgentDecisionTrace] = Field(default_factory=list)
 

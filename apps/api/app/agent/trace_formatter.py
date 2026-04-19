@@ -44,6 +44,9 @@ def format_job_as_agent_response(job: AIJob) -> AgentRunResponse:
         executed_tool_count=len([tool for tool in (trace.tool_calls if trace is not None else []) if tool.status == "completed"]),
         created_task_count=len(trace.created_tasks) if trace is not None else len(artifacts.created_tasks),
         used_memory_count=len(trace.relevant_memories) if trace is not None else 0,
+        conversation_id=trace.conversation_id if trace is not None else None,
+        conversation_turn_count=trace.conversation_turn_count if trace is not None else 0,
+        conversation_summary=trace.conversation_summary if trace is not None else "",
         improvement_notes=trace.improvement_notes if trace is not None else artifacts.improvement_notes,
         timeline=trace.decision_trace if trace is not None else [],
     )

@@ -33,15 +33,25 @@ class LLMService:
         temperature: float = 0.7,
         max_tokens: int = 1200,
     ) -> ResponseModelT:
-        response = cls._client.chat.completions.create(
-            model=current_settings.OPENAI_MODEL,
-            messages=[
+        request_kwargs = {
+            "model": current_settings.OPENAI_MODEL,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+
+        try:
+            response = cls._client.chat.completions.create(**request_kwargs)
+        except Exception as exc:
+            if not cls._should_retry_without_response_format(exc):
+                raise
+            fallback_kwargs = dict(request_kwargs)
+            fallback_kwargs.pop("response_format", None)
+            response = cls._client.chat.completions.create(**fallback_kwargs)
 
         content = response.choices[0].message.content or ""
         payload = cls._extract_json_payload(content)
@@ -126,3 +136,8 @@ class LLMService:
                 pass
 
         raise LLMResponseError("Could not extract valid JSON from model response")
+
+    @staticmethod
+    def _should_retry_without_response_format(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return "response_format" in message or "json_object" in message
