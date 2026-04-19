@@ -110,6 +110,7 @@ class AIScheduleRequest(BaseModel):
 class AIDayScheduleRequest(BaseModel):
     date: str
     task_ids: Optional[List[str]] = None
+    conversation_id: Optional[str] = None
 
 
 class AIImageTaskRequest(BaseModel):
@@ -117,6 +118,7 @@ class AIImageTaskRequest(BaseModel):
     image_mime_type: str = "image/png"
     filename: Optional[str] = "upload-image"
     notes: str = ""
+    conversation_id: Optional[str] = None
     max_tasks: int = 5
     auto_create: bool = False
 
@@ -327,6 +329,10 @@ class ConversationSession(BaseModel):
     updated_at: datetime
 
 
+class ConversationSummaryResult(BaseModel):
+    summary: str
+
+
 class TaskPlanningTrace(BaseModel):
     trace_id: Optional[str] = None
     strategy: AgentStrategy = AgentStrategy.PLAN_EXECUTE
@@ -471,3 +477,25 @@ class AgentRunResponse(BaseModel):
     artifacts: AgentRunArtifacts
     final_result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+class MCPToolDescriptor(BaseModel):
+    name: str
+    description: str
+    inputSchema: Dict[str, Any] = Field(default_factory=dict)
+    annotations: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPToolsListResponse(BaseModel):
+    tools: List[MCPToolDescriptor] = Field(default_factory=list)
+
+
+class MCPToolCallRequest(BaseModel):
+    name: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPToolCallResponse(BaseModel):
+    content: List[Dict[str, Any]] = Field(default_factory=list)
+    structuredContent: Dict[str, Any] = Field(default_factory=dict)
+    isError: bool = False

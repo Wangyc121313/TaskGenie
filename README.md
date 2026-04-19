@@ -36,7 +36,7 @@ TaskGenie 是一个任务规划应用，采用 `React Native + FastAPI` 的 mono
 - FastAPI
 - Pydantic
 - SQLAlchemy
-- SQLite
+- PostgreSQL / SQLite
 - OpenAI-compatible API client
 
 ### Runtime
@@ -113,6 +113,8 @@ DEBUG=True
 - `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
 - `OPENAI_VISION_MODEL`
+
+数据库连接通过 `DATABASE_URL` 控制，支持 PostgreSQL 和 SQLite；未配置时默认使用本地 SQLite。
 
 ## 本地运行
 
@@ -204,6 +206,8 @@ python evals/run_evals.py --mode offline --output evals/results/latest.json
 - `GET /ai/agent/runs/{job_id}`
 - `POST /ai/agent/runs/{job_id}/confirm`
 - `GET /ai/agent/tools`
+- `GET /mcp/tools/list`
+- `POST /mcp/tools/call`
 - `POST /ai/plan-tasks/async`
 - `POST /ai/plan-image/async`
 - `POST /ai/schedule-day/async`

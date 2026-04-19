@@ -2,9 +2,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from app.models.schemas import ToolDefinitionSchema, ToolSideEffectLevel
+from app.models.schemas import MCPToolDescriptor, MCPToolCallResponse, ToolDefinitionSchema, ToolSideEffectLevel
 from app.models.schemas import TaskCreate, TaskUpdate, UserPreferencesUpdate
 from app.services.task_service import TaskService
 from app.services.memory_service import MemoryService
@@ -95,6 +96,38 @@ class ToolRegistry:
 
     def list_tools(self) -> List[ToolDefinition]:
         return list(self._tools.values())
+
+    def list_mcp_tools(self) -> List[MCPToolDescriptor]:
+        return [
+            MCPToolDescriptor(
+                name=definition.name,
+                description=definition.description,
+                inputSchema=definition.input_schema,
+                annotations={
+                    "sideEffectLevel": definition.side_effect_level.value,
+                    "requiresConfirmation": definition.requires_confirmation,
+                    "retryable": definition.retryable,
+                },
+            )
+            for definition in self.list_tools()
+        ]
+
+    def call_mcp_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> MCPToolCallResponse:
+        result = self.execute(name, **(arguments or {}))
+        encoded_result = jsonable_encoder(result)
+        return MCPToolCallResponse(
+            content=[
+                {
+                    "type": "text",
+                    "text": f"Tool {name} executed successfully.",
+                }
+            ],
+            structuredContent={
+                "tool": name,
+                "result": encoded_result,
+            },
+            isError=False,
+        )
 
 
 task_tool_registry = ToolRegistry()

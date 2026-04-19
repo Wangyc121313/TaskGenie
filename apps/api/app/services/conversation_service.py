@@ -4,9 +4,13 @@ from typing import Optional
 
 from app.db.database import db
 from app.models.schemas import ConversationSession, ConversationTurn, ConversationTurnStatus
+from app.services.llm_service import LLMService
 
 
 class ConversationService:
+    _SUMMARY_MAX_TURNS = 5
+    _SUMMARY_MAX_CHARS = 500
+
     @staticmethod
     def get_or_create_conversation(
         conversation_id: Optional[str],
@@ -104,7 +108,21 @@ class ConversationService:
             summary_lines.append(
                 f"User asked: {turn.user_message} | Outcome: {outcome} | Status: {turn.status.value}"
             )
-        return "\n".join(summary_lines)
+        candidate_summary = "\n".join(summary_lines)
+        if (
+            len(session.turns) <= ConversationService._SUMMARY_MAX_TURNS
+            and len(candidate_summary) <= ConversationService._SUMMARY_MAX_CHARS
+        ):
+            return candidate_summary
+
+        try:
+            return LLMService.compress_running_summary(
+                title=session.title or "Conversation",
+                existing_summary=session.running_summary,
+                recent_turns=recent_turns,
+            )
+        except Exception:
+            return candidate_summary
 
     @staticmethod
     def _build_title(prompt: str) -> str:

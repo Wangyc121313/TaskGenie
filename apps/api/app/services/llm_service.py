@@ -1,12 +1,13 @@
 import base64
 import json
 import re
-from typing import Type, TypeVar
+from typing import Iterable, Type, TypeVar
 
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import current_settings
+from app.models.schemas import ConversationTurn, ConversationSummaryResult
 
 
 ResponseModelT = TypeVar("ResponseModelT", bound=BaseModel)
@@ -141,3 +142,39 @@ class LLMService:
     def _should_retry_without_response_format(exc: Exception) -> bool:
         message = str(exc).lower()
         return "response_format" in message or "json_object" in message
+
+    @classmethod
+    def compress_running_summary(
+        cls,
+        *,
+        title: str,
+        existing_summary: str,
+        recent_turns: Iterable[ConversationTurn],
+    ) -> str:
+        turns_payload = [
+            {
+                "user_message": turn.user_message,
+                "goal_summary": turn.goal_summary,
+                "agent_summary": turn.agent_summary,
+                "status": turn.status.value,
+                "created_task_count": turn.created_task_count,
+            }
+            for turn in recent_turns
+        ]
+        prompt = (
+            f"Conversation title: {title}\n"
+            f"Existing summary:\n{existing_summary or 'None'}\n\n"
+            f"Recent turns:\n{json.dumps(turns_payload, ensure_ascii=False, indent=2)}"
+        )
+        result = cls.generate_structured_output(
+            system_prompt=(
+                "Summarize the conversation into one short paragraph for future planning context. "
+                "Preserve the active goal, key constraints, user preferences, and current progress. "
+                "Do not mention every turn verbatim."
+            ),
+            user_prompt=prompt,
+            response_model=ConversationSummaryResult,
+            temperature=0.2,
+            max_tokens=300,
+        )
+        return result.summary.strip()
