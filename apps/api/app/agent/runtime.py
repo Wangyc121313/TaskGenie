@@ -1,7 +1,10 @@
+from functools import partial
 import time
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
+
+from starlette.concurrency import run_in_threadpool
 
 from app.agent.executor import build_task_creation_tool_calls, execute_tool_calls
 from app.agent.planner import AgentPlanner
@@ -53,11 +56,17 @@ class AgentRuntime:
 
         try:
             if request.mode == AgentRunMode.TEXT_GOAL:
-                job = AgentRuntime._run_text_goal(job_id=job_id, request=request, trace=trace)
+                job = await run_in_threadpool(
+                    partial(AgentRuntime._run_text_goal, job_id=job_id, request=request, trace=trace)
+                )
             elif request.mode == AgentRunMode.IMAGE_GOAL:
-                job = AgentRuntime._run_image_goal(job_id=job_id, request=request, trace=trace)
+                job = await run_in_threadpool(
+                    partial(AgentRuntime._run_image_goal, job_id=job_id, request=request, trace=trace)
+                )
             else:
-                job = AgentRuntime._run_day_schedule(job_id=job_id, request=request, trace=trace)
+                job = await run_in_threadpool(
+                    partial(AgentRuntime._run_day_schedule, job_id=job_id, request=request, trace=trace)
+                )
         except Exception as exc:
             trace.execution_status = AgentExecutionStatus.FAILED
             trace.current_step = "failed"
@@ -671,9 +680,24 @@ class AgentRuntime:
             strategy=trace.strategy.value,
             filename=request.filename,
         )
-        extraction = AgentPlanner.extract_image_tasks(
+
+        # --- Stage 1: vision model transcribes image content (no task reasoning) ---
+        transcription = AgentPlanner.transcribe_image_to_text(
             image_bytes=image_bytes,
             image_mime_type=request.image_mime_type,
+            filename=request.filename or "upload-image",
+        )
+        AgentRuntime._append_trace_event(
+            trace,
+            event_type="image_transcribed",
+            stage="input",
+            message="Vision model transcribed image content; handing off to text LLM for task planning.",
+            metadata={"transcription_chars": len(transcription)},
+        )
+
+        # --- Stage 2: text LLM structures transcription into actionable tasks ---
+        extraction = AgentPlanner.extract_tasks_from_transcription(
+            transcription_text=transcription,
             filename=request.filename or "upload-image",
             notes=request.notes,
             max_tasks=max(0, min(10, request.max_tasks)),

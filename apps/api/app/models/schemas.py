@@ -123,6 +123,19 @@ class AIImageTaskRequest(BaseModel):
     auto_create: bool = False
 
 
+class AITranscribeRequest(BaseModel):
+    """Base64-encoded audio for speech-to-text transcription via Whisper."""
+    audio_base64: str
+    audio_mime_type: str = "audio/m4a"  # m4a is the default from iOS/Android voice recorders
+    language: Optional[str] = None  # ISO-639-1 code, e.g. "zh" or "en"; None = auto-detect
+
+
+class AITranscribeResponse(BaseModel):
+    transcript: str
+    language: Optional[str] = None
+    duration_seconds: Optional[float] = None
+
+
 class PlannedTask(BaseModel):
     name: str
     description: str

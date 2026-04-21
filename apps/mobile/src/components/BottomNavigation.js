@@ -12,10 +12,10 @@ const BottomNavigation = ({ activeTab, onTabChange }) => {
         onPress={() => onTabChange('tasks')}
       >
         <Text style={[styles.bottomNavIcon, activeTab === 'tasks' && styles.activeBottomNavIcon]}>
-          TL
+          📋
         </Text>
         <Text style={[styles.bottomNavText, activeTab === 'tasks' && styles.activeBottomNavText]}>
-          Tasks
+          任务
         </Text>
       </TouchableOpacity>
 
@@ -29,10 +29,10 @@ const BottomNavigation = ({ activeTab, onTabChange }) => {
             activeTab === 'calendar' && styles.activeBottomNavIcon,
           ]}
         >
-          CA
+          📅
         </Text>
         <Text style={[styles.bottomNavText, activeTab === 'calendar' && styles.activeBottomNavText]}>
-          Calendar
+          日历
         </Text>
       </TouchableOpacity>
 
@@ -46,10 +46,10 @@ const BottomNavigation = ({ activeTab, onTabChange }) => {
             activeTab === 'assistant' && styles.activeBottomNavIcon,
           ]}
         >
-          AI
+          🤖
         </Text>
         <Text style={[styles.bottomNavText, activeTab === 'assistant' && styles.activeBottomNavText]}>
-          Assistant
+          助手
         </Text>
       </TouchableOpacity>
 
@@ -63,10 +63,10 @@ const BottomNavigation = ({ activeTab, onTabChange }) => {
             activeTab === 'profile' && styles.activeBottomNavIcon,
           ]}
         >
-          ME
+          👤
         </Text>
         <Text style={[styles.bottomNavText, activeTab === 'profile' && styles.activeBottomNavText]}>
-          Profile
+          我的
         </Text>
       </TouchableOpacity>
     </View>

@@ -33,6 +33,8 @@ export const useTaskOperations = () => {
       });
 
       if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        Alert.alert('错误', errData.detail || '创建任务失败，请检查输入并重试');
         return false;
       }
 
@@ -40,11 +42,11 @@ export const useTaskOperations = () => {
         await fetchTasks();
       }
       if (showAlert) {
-        Alert.alert('Success', 'Task created.');
+        Alert.alert('成功', '任务已创建。');
       }
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to create task.');
+      Alert.alert('错误', '无法连接服务器，请确认 API 已启动。');
       console.error(error);
       return false;
     }
@@ -93,13 +95,14 @@ export const useTaskOperations = () => {
       });
 
       if (!response.ok) {
+        Alert.alert('错误', '更新任务失败，请重试。');
         return false;
       }
 
       await fetchTasks();
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to update task.');
+      Alert.alert('错误', '无法连接服务器，请确认 API 已启动。');
       console.error(error);
       return false;
     }
@@ -135,7 +138,7 @@ export const useTaskOperations = () => {
       await fetchTasks();
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to update task status.');
+      Alert.alert('错误', '无法连接服务器，请确认 API 已启动。');
       console.error(error);
       await fetchTasks();
       return false;
@@ -143,10 +146,10 @@ export const useTaskOperations = () => {
   };
 
   const deleteTask = async taskId => {
-    Alert.alert('Delete Task', 'Delete this task?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('删除任务', '确定要删除这个任务吗？', [
+      { text: '取消', style: 'cancel' },
       {
-        text: 'Delete',
+        text: '删除',
         style: 'destructive',
         onPress: async () => {
           try {
@@ -158,7 +161,7 @@ export const useTaskOperations = () => {
               await fetchTasks();
             }
           } catch (error) {
-            Alert.alert('Error', 'Failed to delete task.');
+            Alert.alert('错误', '删除任务失败。');
             console.error(error);
           }
         },
@@ -183,18 +186,18 @@ export const useTaskOperations = () => {
 
       if (!response.ok) {
         const error = await response.json();
-        Alert.alert('Error', error.detail || 'AI planning failed.');
+        Alert.alert('错误', error.detail || 'AI 规划失败，请重试。');
         return;
       }
 
       const data = await response.json();
       setAiJobId(data.job_id);
       Alert.alert(
-        'Planning',
-        `The AI planner is generating up to ${maxTasks} tasks for you.`,
+        'AI 规划中',
+        `AI 正在为你生成最多 ${maxTasks} 个任务，请稍候。`,
       );
     } catch (error) {
-      Alert.alert('Error', 'AI planning failed.');
+      Alert.alert('错误', 'AI 规划失败，请确认 API 已启动。');
       console.error(error);
     } finally {
       setLoading(false);
@@ -228,13 +231,13 @@ export const useTaskOperations = () => {
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        Alert.alert('Error', data.error || data.detail || 'Image planning failed.');
+        Alert.alert('错误', data.error || data.detail || '图片解析失败，请重试。');
         return null;
       }
 
       return data;
     } catch (error) {
-      Alert.alert('Error', 'Image planning failed.');
+      Alert.alert('错误', '图片解析失败，请确认 API 已启动。');
       console.error(error);
       return null;
     } finally {
@@ -247,7 +250,11 @@ export const useTaskOperations = () => {
       return undefined;
     }
 
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30; // 60 秒超时
+
     const timer = setInterval(async () => {
+      attempts += 1;
       try {
         const response = await fetch(`${API_URL}/ai/jobs/${aiJobId}`);
         const job = await response.json();
@@ -257,10 +264,17 @@ export const useTaskOperations = () => {
           await fetchTasks();
         } else if (job.status === 'failed') {
           setAiJobId(null);
-          Alert.alert('Error', job.error || 'AI processing failed.');
+          Alert.alert('AI 解析失败', job.error || 'AI 任务解析未能完成，请重试。');
+        } else if (attempts >= MAX_ATTEMPTS) {
+          setAiJobId(null);
+          Alert.alert('超时', 'AI 任务解析超时，请检查 API 状态后重试。');
         }
       } catch (error) {
         console.error('Failed to check AI job status:', error);
+        if (attempts >= MAX_ATTEMPTS) {
+          setAiJobId(null);
+          Alert.alert('连接失败', '无法检查 AI 任务状态，请确认 API 已启动。');
+        }
       }
     }, 2000);
 

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
+  Platform,
   View,
   Text,
   TextInput,
@@ -8,6 +9,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTask } from '../context/TaskContext';
 
 const TaskModal = ({ visible, isEdit, onClose, onSave }) => {
@@ -21,6 +23,37 @@ const TaskModal = ({ visible, isEdit, onClose, onSave }) => {
 
   const currentTask = isEdit ? editingTask : newTask;
   const setCurrentTask = isEdit ? setEditingTask : setNewTask;
+
+  // 两步日期时间选择：'date' → 'time' → null
+  const [pickerStage, setPickerStage] = useState(null);
+  const [tempPickerDate, setTempPickerDate] = useState(new Date());
+  const [saving, setSaving] = useState(false);
+
+  const handleOpenDatePicker = () => {
+    const base = currentTask?.due_date ? new Date(currentTask.due_date) : new Date();
+    setTempPickerDate(base);
+    setPickerStage('date');
+  };
+
+  const handlePickerChange = (event, selectedDate) => {
+    if (event.type === 'dismissed') {
+      setPickerStage(null);
+      return;
+    }
+    if (!selectedDate) {
+      setPickerStage(null);
+      return;
+    }
+    if (pickerStage === 'date') {
+      setTempPickerDate(selectedDate);
+      setPickerStage('time');
+    } else if (pickerStage === 'time') {
+      const combined = new Date(tempPickerDate);
+      combined.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+      setCurrentTask({ ...currentTask, due_date: combined.toISOString() });
+      setPickerStage(null);
+    }
+  };
 
   const handleSave = async () => {
     if (!currentTask?.name?.trim()) {
@@ -37,19 +70,24 @@ const TaskModal = ({ visible, isEdit, onClose, onSave }) => {
       estimated_hours: currentTask.estimated_hours ? parseFloat(currentTask.estimated_hours) : null,
     };
 
-    let success;
-    if (isEdit) {
-      success = await onSave(currentTask.id, taskData);
-    } else {
-      success = await onSave(taskData);
-    }
-
-    if (success) {
-      onClose();
-      if (!isEdit) {
-        resetNewTask();
+    setSaving(true);
+    try {
+      let success;
+      if (isEdit) {
+        success = await onSave(currentTask.id, taskData);
+      } else {
+        success = await onSave(taskData);
       }
-      Alert.alert('成功', isEdit ? '任务已更新' : '任务已创建');
+
+      if (success) {
+        onClose();
+        if (!isEdit) {
+          resetNewTask();
+        }
+        Alert.alert('成功', isEdit ? '任务已更新' : '任务已创建');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -368,13 +406,13 @@ const TaskModal = ({ visible, isEdit, onClose, onSave }) => {
             
             <Text style={styles.inputLabel}>截止时间</Text>
             <View style={styles.dateTimeContainer}>
-              {/* 当前选择显示 */}
-              <View style={styles.currentSelection}>
+              {/* 当前选择显示（可点击打开日历） */}
+              <TouchableOpacity style={styles.currentSelection} onPress={handleOpenDatePicker}>
                 <Text style={styles.currentSelectionText}>
                   {getSelectedDateLabel()}
                 </Text>
                 <Text style={styles.currentSelectionIcon}>📅</Text>
-              </View>
+              </TouchableOpacity>
               
               {/* 日期选择选项 */}
               <View style={styles.dateOptionsContainer}>
@@ -463,7 +501,17 @@ const TaskModal = ({ visible, isEdit, onClose, onSave }) => {
               keyboardType="numeric"
             />
           </ScrollView>
-          
+
+          {/* 系统日期/时间选择弹窗 */}
+          {pickerStage !== null && (
+            <DateTimePicker
+              value={tempPickerDate}
+              mode={pickerStage}
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handlePickerChange}
+            />
+          )}
+
           <View style={styles.modalButtons}>
             <TouchableOpacity
               style={[styles.modalButton, styles.cancelButton]}
@@ -472,11 +520,12 @@ const TaskModal = ({ visible, isEdit, onClose, onSave }) => {
               <Text style={styles.cancelButtonText}>取消</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modalButton, styles.saveButton]}
+              style={[styles.modalButton, styles.saveButton, saving && { opacity: 0.7 }]}
               onPress={handleSave}
+              disabled={saving}
             >
               <Text style={styles.saveButtonText}>
-                {isEdit ? '保存' : '创建'}
+                {saving ? '保存中...' : (isEdit ? '保存' : '创建')}
               </Text>
             </TouchableOpacity>
           </View>

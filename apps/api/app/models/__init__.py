@@ -1,6 +1,8 @@
 from app.models.schemas import (
     AIDayScheduleRequest,
     AIImageTaskRequest,
+    AITranscribeRequest,
+    AITranscribeResponse,
     AgentDecisionTrace,
     AgentDecisionStatus,
     AgentExecutionStatus,
@@ -58,6 +60,8 @@ from app.models.schemas import (
 __all__ = [
     "AIDayScheduleRequest",
     "AIImageTaskRequest",
+    "AITranscribeRequest",
+    "AITranscribeResponse",
     "AgentDecisionTrace",
     "AgentDecisionStatus",
     "AgentExecutionStatus",

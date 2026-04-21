@@ -1,7 +1,5 @@
 import logging
-
 import uvicorn
-
 from app.core.config import current_settings
 
 

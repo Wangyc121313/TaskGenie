@@ -17,18 +17,108 @@ from app.services.llm_service import LLMService
 
 
 class AgentPlanner:
+    _TASK_TYPE_SIGNALS = {
+        "development": {
+            "phrases": {
+                "implement": 4,
+                "build": 3,
+                "develop": 3,
+                "design": 2,
+                "refactor": 3,
+                "debug": 3,
+                "fix": 3,
+                "ship": 2,
+                "api": 1,
+                "frontend": 1,
+                "backend": 1,
+                "feature": 1,
+                "实现": 4,
+                "开发": 3,
+                "设计": 2,
+                "重构": 3,
+                "修复": 3,
+                "接口": 1,
+                "功能": 1,
+            }
+        },
+        "learning": {
+            "phrases": {
+                "learn": 4,
+                "study": 4,
+                "research": 3,
+                "understand": 2,
+                "read": 2,
+                "course": 2,
+                "tutorial": 2,
+                "学习": 4,
+                "研究": 3,
+                "理解": 2,
+                "阅读": 2,
+                "课程": 2,
+            }
+        },
+        "planning": {
+            "phrases": {
+                "plan": 4,
+                "organize": 3,
+                "arrange": 3,
+                "schedule": 4,
+                "roadmap": 2,
+                "prioritize": 2,
+                "timeline": 2,
+                "calendar": 2,
+                "计划": 4,
+                "安排": 4,
+                "排期": 4,
+                "时间块": 3,
+                "时间表": 3,
+                "日程": 3,
+            }
+        },
+        "writing": {
+            "phrases": {
+                "write": 4,
+                "draft": 4,
+                "document": 3,
+                "documentation": 3,
+                "blog": 2,
+                "essay": 2,
+                "proposal": 2,
+                "readme": 2,
+                "docs": 2,
+                "写": 4,
+                "撰写": 4,
+                "文档": 3,
+                "说明": 2,
+                "博客": 2,
+                "简历": 2,
+            }
+        },
+    }
+
     @staticmethod
     def analyze_task_type(prompt: str) -> str:
-        prompt_analysis = prompt.lower()
-        if any(keyword in prompt_analysis for keyword in ["build", "develop", "design", "implement"]):
-            return "development"
-        if any(keyword in prompt_analysis for keyword in ["study", "learn", "research", "ai", "agent"]):
-            return "learning"
-        if any(keyword in prompt_analysis for keyword in ["plan", "organize", "arrange", "schedule"]):
-            return "planning"
-        if any(keyword in prompt_analysis for keyword in ["write", "draft", "submit"]):
-            return "writing"
-        return "general"
+        normalized_prompt = prompt.lower().strip()
+        if not normalized_prompt:
+            return "general"
+
+        scores = {task_type: 0 for task_type in AgentPlanner._TASK_TYPE_SIGNALS}
+        for task_type, config in AgentPlanner._TASK_TYPE_SIGNALS.items():
+            for phrase, weight in config["phrases"].items():
+                if phrase in normalized_prompt:
+                    scores[task_type] += weight
+
+        strongest_match = max(scores.values())
+        if strongest_match <= 0:
+            return "general"
+
+        top_task_types = [task_type for task_type, score in scores.items() if score == strongest_match]
+        priority_order = ["planning", "development", "learning", "writing"]
+        for task_type in priority_order:
+            if task_type in top_task_types:
+                return task_type
+
+        return top_task_types[0]
 
     @staticmethod
     def plan_text_goal(
@@ -88,6 +178,46 @@ class AgentPlanner:
         return notes
 
     @staticmethod
+    def _build_transcription_system_prompt() -> str:
+        return (
+            "You are a precise content-extraction assistant. "
+            "Your only job is to faithfully transcribe or describe everything visible in the image.\n"
+            "Rules:\n"
+            "- If the image contains text (notes, lists, whiteboards, documents, code, screenshots): "
+            "transcribe every word exactly as written, preserving structure and line breaks.\n"
+            "- If the image shows diagrams, charts, or visual layouts: describe their structure, "
+            "labels, and relationships in detail.\n"
+            "- If the image shows both text and visuals, handle both.\n"
+            "- Do NOT suggest tasks, interpret goals, draw conclusions, or add any commentary.\n"
+            "- Return only plain text that mirrors the image content. No JSON, no markdown headers."
+        )
+
+    @staticmethod
+    def transcribe_image_to_text(
+        *,
+        image_bytes: bytes,
+        image_mime_type: str,
+        filename: str,
+    ) -> str:
+        """Stage 1 of the 2-stage pipeline: use the vision model purely as a transcriber.
+
+        The vision model extracts/describes raw image content without any task reasoning.
+        The resulting text is fed to the text LLM in Stage 2 for structured task planning.
+        """
+        user_prompt = (
+            f"Image filename: {filename}\n"
+            "请将此图片中的全部内容完整提取出来（文字原样逐字转录；图表请详细描述结构和标签）。"
+        )
+        return LLMService.generate_multimodal_text(
+            system_prompt=AgentPlanner._build_transcription_system_prompt(),
+            user_prompt=user_prompt,
+            image_bytes=image_bytes,
+            image_mime_type=image_mime_type,
+            temperature=0.1,
+            max_tokens=1600,
+        )
+
+    @staticmethod
     def extract_image_tasks(
         *,
         image_bytes: bytes,
@@ -108,6 +238,33 @@ class AgentPlanner:
             ),
             image_bytes=image_bytes,
             image_mime_type=image_mime_type,
+            response_model=ImageTaskExtractionResult,
+            temperature=0.3,
+            max_tokens=1600,
+        )
+
+    @staticmethod
+    def extract_tasks_from_transcription(
+        *,
+        transcription_text: str,
+        filename: str,
+        notes: str,
+        max_tasks: int,
+        planning_context: str,
+    ) -> ImageTaskExtractionResult:
+        """Stage 2 of the 2-stage pipeline: text LLM structures transcribed content into tasks."""
+        user_prompt = f"Image filename: {filename}\n"
+        if notes.strip():
+            user_prompt += f"User notes:\n{notes.strip()}\n"
+        user_prompt += f"Transcribed image content:\n{transcription_text}\n"
+        user_prompt += "Extract actionable tasks from the content above."
+
+        return LLMService.generate_structured_output(
+            system_prompt=AgentPlanner._build_image_task_system_prompt(
+                max_tasks=max_tasks,
+                planning_context=planning_context,
+            ),
+            user_prompt=user_prompt,
             response_model=ImageTaskExtractionResult,
             temperature=0.3,
             max_tokens=1600,

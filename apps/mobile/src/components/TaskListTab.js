@@ -140,19 +140,19 @@ const TaskListTab = ({
   const getEmptyStateText = () => {
     if (!tasks.length) {
       return {
-        title: 'No tasks yet',
-        hint: 'Open the add menu to create a task manually or generate one with AI.',
+        title: '暂无任务',
+        hint: '点击右上角 + 可手动添加或用 AI 生成任务',
       };
     }
-    if (!selectedTags.length) {
+    if (!filteredTasks.length) {
       return {
-        title: 'No matching tasks',
-        hint: 'Adjust your filters to see more tasks.',
+        title: '没有符合条件的任务',
+        hint: '尝试减少标签筛选或创建新任务',
       };
     }
     return {
-      title: 'Nothing matches this filter',
-      hint: 'Try selecting fewer tags or create a new task.',
+      title: '没有符合条件的任务',
+      hint: '尝试减少标签筛选或创建新任务',
     };
   };
 
@@ -161,7 +161,7 @@ const TaskListTab = ({
   return (
     <>
       <View style={listStyles.header}>
-        <Text style={listStyles.headerTitle}>My Tasks</Text>
+        <Text style={listStyles.headerTitle}>我的任务</Text>
         <TouchableOpacity style={listStyles.addButton} onPress={handleOpenCreate}>
           <Text style={listStyles.addButtonText}>+</Text>
         </TouchableOpacity>
@@ -180,7 +180,7 @@ const TaskListTab = ({
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={COLORS.primary}
-            title="Refreshing"
+            title="刷新中"
             titleColor={COLORS.primary}
           />
         }
@@ -218,8 +218,8 @@ const TaskListTab = ({
         >
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={listStyles.sheet}>
-              <Text style={listStyles.sheetTitle}>Create a Task</Text>
-              <Text style={listStyles.sheetSubtitle}>Choose how you want to generate tasks.</Text>
+              <Text style={listStyles.sheetTitle}>创建任务</Text>
+              <Text style={listStyles.sheetSubtitle}>选择创建任务的方式。</Text>
 
               <TouchableOpacity style={listStyles.sheetOption} onPress={handleManualAdd}>
                 <View
@@ -231,9 +231,9 @@ const TaskListTab = ({
                   <Text style={listStyles.sheetOptionEmoji}>+</Text>
                 </View>
                 <View style={listStyles.sheetOptionBody}>
-                  <Text style={listStyles.sheetOptionTitle}>Manual task</Text>
+                  <Text style={listStyles.sheetOptionTitle}>手动创建</Text>
                   <Text style={listStyles.sheetOptionDesc}>
-                    Create a task by entering title, priority, due date, and details.
+                    填写标题、优先级、截止时间等信息创建任务。
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -250,9 +250,9 @@ const TaskListTab = ({
                   <Text style={listStyles.sheetOptionEmoji}>AI</Text>
                 </View>
                 <View style={listStyles.sheetOptionBody}>
-                  <Text style={listStyles.sheetOptionTitle}>Text to tasks</Text>
+                  <Text style={listStyles.sheetOptionTitle}>文字生成任务</Text>
                   <Text style={listStyles.sheetOptionDesc}>
-                    Describe a goal and let AI break it into actionable steps.
+                    描述目标，AI 为你拆解成可执行步骤。
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -269,9 +269,9 @@ const TaskListTab = ({
                   <Text style={listStyles.sheetOptionEmoji}>IMG</Text>
                 </View>
                 <View style={listStyles.sheetOptionBody}>
-                  <Text style={listStyles.sheetOptionTitle}>Image to tasks</Text>
+                  <Text style={listStyles.sheetOptionTitle}>图片生成任务</Text>
                   <Text style={listStyles.sheetOptionDesc}>
-                    Extract tasks from screenshots, whiteboards, and handwritten notes.
+                    从截图、白板、手写笔记中提取任务。
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -280,7 +280,7 @@ const TaskListTab = ({
                 style={listStyles.sheetCancel}
                 onPress={() => setActionSheetVisible(false)}
               >
-                <Text style={listStyles.sheetCancelText}>Cancel</Text>
+                <Text style={listStyles.sheetCancelText}>取消</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

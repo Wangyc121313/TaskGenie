@@ -19,7 +19,7 @@ import { styles } from './src/styles/AppStyles';
 
 
 const App = () => {
-  const [activeTab, setActiveTab] = useState('assistant');
+  const [activeTab, setActiveTab] = useState('tasks');
   const [aiModalVisible, setAiModalVisible] = useState(false);
   const [aiImageModalVisible, setAiImageModalVisible] = useState(false);
 
@@ -70,9 +70,9 @@ const App = () => {
 
   const handleTaskSelect = task => {
     Alert.alert(
-      'Task Details',
-      `Name: ${task.name}\n${task.description || 'No description.'}`,
-      [{ text: 'Close', style: 'default' }],
+      '任务详情',
+      `名称：${task.name}\n${task.description || '暂无描述'}`,
+      [{ text: '关闭', style: 'default' }],
     );
   };
 

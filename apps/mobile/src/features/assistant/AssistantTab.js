@@ -89,57 +89,60 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>AI Assistant</Text>
-        <Text style={styles.title}>Plan, inspect, confirm, and learn from every run.</Text>
+        <Text style={styles.eyebrow}>AI 智能助手</Text>
+        <Text style={styles.title}>智能 Agent，让任务规划更高效</Text>
         <Text style={styles.subtitle}>
-          The assistant exposes the actual agent flow instead of hiding it behind a single button.
+          在这里，你可以用文字描述目标、上传截图或白板照片，让 AI 自动拆解成可执行任务。还可以为当天的任务生成合理日程。每次运行的过程都完整可见，你可以随时确认或调整。
         </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Text Goal to Tasks</Text>
+        <Text style={styles.cardTitle}>📝 文字目标转任务</Text>
+        <Text style={styles.cardDesc}>描述一个较大的目标，AI 会把它拆解成若干具体的子任务并添加到任务列表中。</Text>
         <TextInput
           style={styles.input}
-          placeholder="Describe the goal you want the agent to break down."
+          placeholder="例如：准备下周的项目汇报、学习 Python 爬虫..."
           value={textPrompt}
           onChangeText={setTextPrompt}
           multiline
         />
         <TextInput
           style={styles.input}
-          placeholder="Max tasks"
+          placeholder="最多任务数（默认 5）"
           value={textMaxTasks}
           onChangeText={setTextMaxTasks}
           keyboardType="numeric"
         />
         <TouchableOpacity style={styles.primaryButton} onPress={handleTextRun} disabled={loading}>
-          <Text style={styles.primaryButtonText}>Run Text Agent</Text>
+          <Text style={styles.primaryButtonText}>运行文字助手</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Image to Tasks</Text>
+        <Text style={styles.cardTitle}>🖼️ 图片转任务</Text>
+        <Text style={styles.cardDesc}>上传截图、白板照片或会议记录图片，AI 将识别其中的待办事项并转为任务。</Text>
         <TouchableOpacity style={styles.imagePicker} onPress={handlePickImage}>
           {imageAsset?.uri ? (
             <Image source={{ uri: imageAsset.uri }} style={styles.imagePreview} />
           ) : (
-            <Text style={styles.imagePlaceholder}>Select an image to extract candidate tasks.</Text>
+            <Text style={styles.imagePlaceholder}>点击选择图片以提取候选任务</Text>
           )}
         </TouchableOpacity>
         <TextInput
           style={styles.input}
-          placeholder="Optional notes for the image context"
+          placeholder="可选：补充图片背景说明"
           value={imageNotes}
           onChangeText={setImageNotes}
           multiline
         />
         <TouchableOpacity style={styles.primaryButton} onPress={handleImageRun} disabled={loading}>
-          <Text style={styles.primaryButtonText}>Run Image Agent</Text>
+          <Text style={styles.primaryButtonText}>运行图片助手</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Schedule Existing Tasks</Text>
+        <Text style={styles.cardTitle}>📅 为现有任务生成日程</Text>
+        <Text style={styles.cardDesc}>根据你当天未完成的任务，AI 自动安排合理的时间块，生成一份当日执行计划。</Text>
         <TextInput
           style={styles.input}
           placeholder="YYYY-MM-DD"
@@ -147,16 +150,16 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
           onChangeText={setScheduleDate}
         />
         <TouchableOpacity style={styles.primaryButton} onPress={handleScheduleRun} disabled={loading}>
-          <Text style={styles.primaryButtonText}>Generate Day Schedule</Text>
+          <Text style={styles.primaryButtonText}>生成当日日程</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
         <View style={styles.resultHeader}>
           <View>
-            <Text style={styles.cardTitle}>Agent Run</Text>
+            <Text style={styles.cardTitle}>Agent 运行记录</Text>
             <Text style={styles.cardMeta}>
-              Strategy: {currentRun?.strategy || 'plan_execute'}
+              策略：{currentRun?.strategy || 'plan_execute'}
             </Text>
           </View>
           {loading ? <ActivityIndicator color={COLORS.primary} /> : null}
@@ -165,24 +168,24 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
         {currentRun ? (
           <>
             <View style={styles.summaryRow}>
-              <SummaryPill label="Stage" value={currentRun.trace_summary.current_stage} />
-              <SummaryPill label="Memory" value={`${currentRun.trace_summary.used_memory_count}`} />
-              <SummaryPill label="Tools" value={`${currentRun.trace_summary.executed_tool_count}`} />
+              <SummaryPill label="阶段" value={currentRun.trace_summary.current_stage} />
+              <SummaryPill label="记忆" value={`${currentRun.trace_summary.used_memory_count}`} />
+              <SummaryPill label="工具" value={`${currentRun.trace_summary.executed_tool_count}`} />
             </View>
 
             <Text style={styles.runTitle}>
-              {currentRun.trace_summary.goal_summary || 'No goal summary available'}
+              {currentRun.trace_summary.goal_summary || '暂无目标摘要'}
             </Text>
             {currentRun.requires_confirmation ? (
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={() => onConfirmRun(currentRun.job_id)}
               >
-                <Text style={styles.confirmButtonText}>Confirm Side-Effecting Actions</Text>
+                <Text style={styles.confirmButtonText}>确认执行有副作用的操作</Text>
               </TouchableOpacity>
             ) : null}
 
-            <SectionTitle title="Timeline" />
+            <SectionTitle title="执行时间线" />
             {timeline.length ? (
               timeline.map((item, index) => (
                 <View key={`${item.timestamp}-${index}`} style={styles.timelineItem}>
@@ -192,12 +195,12 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
                 </View>
               ))
             ) : (
-              <Text style={styles.emptyState}>Run the agent to see timeline events.</Text>
+              <Text style={styles.emptyState}>运行 Agent 后查看执行时间线。</Text>
             )}
 
             {!!currentRun.artifacts?.planned_tasks?.length && (
               <>
-                <SectionTitle title="Planned Tasks" />
+                <SectionTitle title="规划的任务" />
                 {currentRun.artifacts.planned_tasks.map((task, index) => (
                   <View key={`${task.name}-${index}`} style={styles.listCard}>
                     <Text style={styles.listTitle}>{task.name}</Text>
@@ -209,7 +212,7 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
 
             {!!currentRun.artifacts?.task_candidates?.length && (
               <>
-                <SectionTitle title="Image Candidates" />
+                <SectionTitle title="图片候选任务" />
                 {currentRun.artifacts.task_candidates.map((task, index) => (
                   <View key={`${task.name}-${index}`} style={styles.listCard}>
                     <Text style={styles.listTitle}>{task.name}</Text>
@@ -221,7 +224,7 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
 
             {!!currentRun.artifacts?.created_tasks?.length && (
               <>
-                <SectionTitle title="Created Tasks" />
+                <SectionTitle title="已创建的任务" />
                 {currentRun.artifacts.created_tasks.map((task, index) => (
                   <View key={`${task.id || task.name}-${index}`} style={styles.listCard}>
                     <Text style={styles.listTitle}>{task.name}</Text>
@@ -233,7 +236,7 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
 
             {currentRun.artifacts?.schedule?.schedule_items?.length ? (
               <>
-                <SectionTitle title="Schedule" />
+                <SectionTitle title="日程安排" />
                 {currentRun.artifacts.schedule.schedule_items.map((item, index) => (
                   <View key={`${item.task_id}-${index}`} style={styles.listCard}>
                     <Text style={styles.listTitle}>
@@ -246,7 +249,7 @@ const AssistantTab = ({ currentRun, loading, onRunAgent, onConfirmRun }) => {
             ) : null}
           </>
         ) : (
-          <Text style={styles.emptyState}>No agent run yet.</Text>
+          <Text style={styles.emptyState}>暂无运行记录，请先运行 Agent。</Text>
         )}
       </View>
     </ScrollView>
@@ -309,7 +312,13 @@ const styles = {
     color: COLORS.text1,
     fontSize: 17,
     fontWeight: '800',
-    marginBottom: 10,
+    marginBottom: 6,
+  },
+  cardDesc: {
+    color: COLORS.text2,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
   },
   cardMeta: {
     color: COLORS.text3,

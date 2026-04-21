@@ -11,6 +11,8 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "^9.1.0",
+    "@react-native-voice/voice": "^3.2.4",
     "react": "19.0.0",
     "react-native": "0.79.2",
     "react-native-image-picker": "^8.2.1"

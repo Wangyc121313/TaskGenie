@@ -71,13 +71,13 @@ const AIImagePlanningModal = ({
       return;
     }
     if (pickerResult.errorCode) {
-      Alert.alert('Image Error', pickerResult.errorMessage || 'Failed to select image.');
+      Alert.alert('图片错误', pickerResult.errorMessage || '选择图片失败，请重试。');
       return;
     }
 
     const asset = pickerResult.assets?.[0];
     if (!asset?.base64 || !asset?.type) {
-      Alert.alert('Image Error', 'The selected image did not include usable data.');
+      Alert.alert('图片错误', '所选图片不包含可用的图像数据，请重新选择。');
       return;
     }
 
@@ -88,7 +88,7 @@ const AIImagePlanningModal = ({
 
   const handleAnalyze = async () => {
     if (!imageAsset?.base64 || !imageAsset?.type) {
-      Alert.alert('Image Required', 'Select an image before running analysis.');
+      Alert.alert('请先选择图片', '运行分析前请先选择一张图片。');
       return;
     }
 
@@ -121,7 +121,7 @@ const AIImagePlanningModal = ({
 
   const handleCreateTasks = async () => {
     if (!selectedTaskCandidates.length) {
-      Alert.alert('No Tasks Selected', 'Select at least one extracted task.');
+      Alert.alert('未选择任务', '请至少选择一个提取的任务。');
       return;
     }
 
@@ -133,12 +133,12 @@ const AIImagePlanningModal = ({
     setSubmittingTasks(false);
 
     if (createdCount > 0) {
-      Alert.alert('Tasks Created', `${createdCount} tasks were added from the image.`);
+      Alert.alert('任务已创建', `已从图片中成功添加 ${createdCount} 个任务。`);
       onClose();
       return;
     }
 
-    Alert.alert('No Tasks Created', 'The selected task candidates could not be created.');
+    Alert.alert('创建失败', '所选任务候选项未能成功创建，请重试。');
   };
 
   return (
@@ -152,13 +152,13 @@ const AIImagePlanningModal = ({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <View>
-              <Text style={styles.title}>Image to Tasks</Text>
+              <Text style={styles.title}>图片提取任务</Text>
               <Text style={styles.subtitle}>
-                Turn screenshots, whiteboards, and notes into structured tasks.
+                将截图、白板、手写笔记转换为结构化任务。
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>x</Text>
+              <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -168,18 +168,18 @@ const AIImagePlanningModal = ({
                 <Image source={{ uri: imageAsset.uri }} style={styles.previewImage} />
               ) : (
                 <View style={styles.imagePlaceholder}>
-                  <Text style={styles.imagePlaceholderTitle}>Select an image</Text>
+                  <Text style={styles.imagePlaceholderTitle}>点击选择图片</Text>
                   <Text style={styles.imagePlaceholderText}>
-                    Choose a screenshot, whiteboard photo, or meeting note image.
+                    支持截图、白板照片、手写笔记等图片。
                   </Text>
                 </View>
               )}
             </TouchableOpacity>
 
-            <Text style={styles.label}>Notes</Text>
+            <Text style={styles.label}>备注</Text>
             <TextInput
               style={styles.notesInput}
-              placeholder="Optional context for the image, such as where it came from or what to prioritize."
+              placeholder="可选：补充图片背景说明，例如来源或重点关注方向..."
               value={notes}
               onChangeText={setNotes}
               multiline
@@ -188,7 +188,7 @@ const AIImagePlanningModal = ({
             />
 
             <View style={styles.settingRow}>
-              <Text style={styles.label}>Max extracted tasks</Text>
+              <Text style={styles.label}>最多提取任务数</Text>
               <View style={styles.stepper}>
                 <TouchableOpacity
                   style={styles.stepperButton}
@@ -214,27 +214,27 @@ const AIImagePlanningModal = ({
               {loading ? (
                 <View style={styles.buttonContent}>
                   <ActivityIndicator color="#fff" />
-                  <Text style={styles.primaryButtonText}>Analyzing image...</Text>
+                  <Text style={styles.primaryButtonText}>正在分析图片...</Text>
                 </View>
               ) : (
-                <Text style={styles.primaryButtonText}>Analyze Image</Text>
+                <Text style={styles.primaryButtonText}>分析图片</Text>
               )}
             </TouchableOpacity>
 
             {result ? (
               <View style={styles.resultCard}>
-                <Text style={styles.resultTitle}>Extraction Result</Text>
+                <Text style={styles.resultTitle}>提取结果</Text>
                 <Text style={styles.resultSummary}>{result.scene_summary}</Text>
                 {result.trace?.project_theme ? (
                   <Text style={styles.contextText}>
-                    Context: {result.trace.project_theme}
+                    背景：{result.trace.project_theme}
                   </Text>
                 ) : null}
 
                 {result.trace?.events?.length ? (
                   <View style={styles.traceBadge}>
                     <Text style={styles.traceBadgeText}>
-                      {result.trace.events.length} trace events recorded
+                      {result.trace.events.length} 条追踪事件已记录
                     </Text>
                   </View>
                 ) : null}
@@ -262,14 +262,14 @@ const AIImagePlanningModal = ({
                         </View>
                       </View>
                       <View style={styles.metaRow}>
-                        <Text style={styles.metaText}>Priority: {candidate.priority}</Text>
+                        <Text style={styles.metaText}>优先级：{candidate.priority}</Text>
                         <Text style={styles.metaText}>
-                          Est: {candidate.estimated_hours}h
+                          预计：{candidate.estimated_hours}h
                         </Text>
                       </View>
                       {candidate.source_snippet ? (
                         <Text style={styles.snippetText}>
-                          Source: {candidate.source_snippet}
+                          来源：{candidate.source_snippet}
                         </Text>
                       ) : null}
                     </TouchableOpacity>
@@ -297,11 +297,11 @@ const AIImagePlanningModal = ({
                   {submittingTasks ? (
                     <View style={styles.buttonContent}>
                       <ActivityIndicator color={COLORS.primary} />
-                      <Text style={styles.secondaryButtonText}>Creating tasks...</Text>
+                      <Text style={styles.secondaryButtonText}>正在创建任务...</Text>
                     </View>
                   ) : (
                     <Text style={styles.secondaryButtonText}>
-                      Create {selectedTaskCandidates.length} Selected Tasks
+                      创建 {selectedTaskCandidates.length} 个已选任务
                     </Text>
                   )}
                 </TouchableOpacity>

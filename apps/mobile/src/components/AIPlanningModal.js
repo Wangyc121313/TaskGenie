@@ -9,12 +9,16 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 
 const { height: screenHeight } = Dimensions.get('window');
 
 const AIPlanningModal = ({ visible, onClose, onPlan, loading, aiJobId }) => {
   const [aiPrompt, setAiPrompt] = useState('');
   const [maxTasks, setMaxTasks] = useState(5); // 默认5个任务
+
+  const { listening, toggle: toggleVoice, error: voiceError, available: voiceAvailable } =
+    useVoiceInput({ onResult: (text) => setAiPrompt(text) });
 
   useEffect(() => {
     if (!visible) {
@@ -35,6 +39,7 @@ const AIPlanningModal = ({ visible, onClose, onPlan, loading, aiJobId }) => {
     }
     
     onPlan(aiPrompt, maxTasks);
+    onClose(); // 提交后立即关闭弹窗，后台轮询任务状态
   };
 
   const handleMaxTasksChange = (text) => {
@@ -199,6 +204,43 @@ const AIPlanningModal = ({ visible, onClose, onPlan, loading, aiJobId }) => {
     disabledButton: {
       opacity: 0.7,
     },
+    voiceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+      gap: 8,
+    },
+    voiceButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      backgroundColor: '#F0FDF4',
+      borderWidth: 1.5,
+      borderColor: '#86EFAC',
+    },
+    voiceButtonListening: {
+      backgroundColor: '#FEF2F2',
+      borderColor: '#FCA5A5',
+    },
+    voiceButtonText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: '#16A34A',
+      marginLeft: 6,
+    },
+    voiceButtonTextListening: {
+      color: '#DC2626',
+    },
+    voiceErrorText: {
+      fontSize: 12,
+      color: '#EF4444',
+      marginBottom: 8,
+      textAlign: 'center',
+    },
     processingContainer: {
       marginTop: 20,
       alignItems: 'center',
@@ -232,14 +274,32 @@ const AIPlanningModal = ({ visible, onClose, onPlan, loading, aiJobId }) => {
           </Text>
           
           <TextInput
-            style={styles.aiInput}
+            style={[styles.aiInput, listening && { borderColor: '#FCA5A5' }]}
             placeholder="例如：准备一场生日派对、学习React Native、写一份项目报告..."
-            value={aiPrompt}
-            onChangeText={setAiPrompt}
+            value={listening ? '🎙️ 正在聆听，请说话...' : aiPrompt}
+            onChangeText={listening ? undefined : setAiPrompt}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
+            editable={!listening}
           />
+
+          {/* 语音输入 */}
+          {voiceAvailable && (
+            <View style={styles.voiceRow}>
+              <TouchableOpacity
+                style={[styles.voiceButton, listening && styles.voiceButtonListening]}
+                onPress={toggleVoice}
+                activeOpacity={0.75}
+              >
+                <Text style={{ fontSize: 16 }}>{listening ? '🔴' : '🎤'}</Text>
+                <Text style={[styles.voiceButtonText, listening && styles.voiceButtonTextListening]}>
+                  {listening ? '点击停止' : '语音输入'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {voiceError ? <Text style={styles.voiceErrorText}>{voiceError}</Text> : null}
 
           {/* 任务设置 */}
           <View style={styles.settingsContainer}>

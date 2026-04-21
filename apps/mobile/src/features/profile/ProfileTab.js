@@ -49,36 +49,45 @@ const ProfileTab = ({
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.hero}>
+        <Text style={styles.heroTitle}>👤 我的</Text>
+        <Text style={styles.heroSubtitle}>
+          在这里设置你的工作习惯和时间偏好，AI 会根据这些信息为你生成更贴合实际的任务日程。
+          记忆模块会记录 Agent 了解到的你的背景信息，方便下次更精准地规划任务。
+        </Text>
+      </View>
+
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Preferences</Text>
+        <Text style={styles.cardTitle}>个人偏好</Text>
+        <Text style={styles.cardDesc}>设置工作时间和规划风格，AI 在生成日程时会遵循这些偏好。</Text>
         {loading ? <ActivityIndicator color={COLORS.primary} /> : null}
         <TextInput
           style={styles.input}
-          placeholder="Display name"
+          placeholder="显示名称"
           value={draftPreferences.display_name || ''}
           onChangeText={value => handlePreferenceChange('display_name', value)}
         />
         <TextInput
           style={styles.input}
-          placeholder="Work start time"
+          placeholder="工作开始时间（如 09:00）"
           value={draftPreferences.work_start_time || '09:00'}
           onChangeText={value => handlePreferenceChange('work_start_time', value)}
         />
         <TextInput
           style={styles.input}
-          placeholder="Work end time"
+          placeholder="工作结束时间（如 18:00）"
           value={draftPreferences.work_end_time || '18:00'}
           onChangeText={value => handlePreferenceChange('work_end_time', value)}
         />
         <TextInput
           style={styles.input}
-          placeholder="Planning style"
+          placeholder="规划风格（balanced / aggressive / relaxed）"
           value={draftPreferences.planning_style || 'balanced'}
           onChangeText={value => handlePreferenceChange('planning_style', value)}
         />
         <TextInput
           style={styles.input}
-          placeholder="Preferred task duration hours"
+          placeholder="单个任务默认时长（小时）"
           value={`${draftPreferences.preferred_task_duration_hours || 2}`}
           onChangeText={value => handlePreferenceChange('preferred_task_duration_hours', Number(value) || 2)}
           keyboardType="numeric"
@@ -87,21 +96,22 @@ const ProfileTab = ({
           style={styles.primaryButton}
           onPress={() => onUpdatePreferences(draftPreferences)}
         >
-          <Text style={styles.primaryButtonText}>Save Preferences</Text>
+          <Text style={styles.primaryButtonText}>保存偏好</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Memory Manager</Text>
+        <Text style={styles.cardTitle}>记忆管理</Text>
+        <Text style={styles.cardDesc}>Agent 在运行过程中会自动记录一些背景知识。你也可以手动添加或删除记忆条目，让 AI 更了解你。</Text>
         <TextInput
           style={styles.input}
-          placeholder="Memory category"
+          placeholder="记忆类别（如 context / preference）"
           value={memoryCategory}
           onChangeText={setMemoryCategory}
         />
         <TextInput
           style={styles.input}
-          placeholder="Add a confirmed memory"
+          placeholder="输入记忆内容"
           value={memoryContent}
           onChangeText={setMemoryContent}
           multiline
@@ -121,7 +131,7 @@ const ProfileTab = ({
             setMemoryContent('');
           }}
         >
-          <Text style={styles.primaryButtonText}>Create Memory</Text>
+          <Text style={styles.primaryButtonText}>创建记忆</Text>
         </TouchableOpacity>
 
         {memories.map(memory => (
@@ -132,7 +142,7 @@ const ProfileTab = ({
                 <Text style={styles.memorySource}>{memory.source}</Text>
               </View>
               <TouchableOpacity onPress={() => onDeleteMemory(memory.id)}>
-                <Text style={styles.deleteText}>Delete</Text>
+                <Text style={styles.deleteText}>删除</Text>
               </TouchableOpacity>
             </View>
             <Text style={styles.memoryContent}>{memory.content}</Text>
@@ -142,14 +152,14 @@ const ProfileTab = ({
                 onPress={() => onUpdateMemory(memory.id, { is_active: !memory.is_active })}
               >
                 <Text style={styles.secondaryButtonText}>
-                  {memory.is_active ? 'Mark Inactive' : 'Reactivate'}
+                  {memory.is_active ? '标记不活跃' : '重新激活'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.secondaryButton}
                 onPress={() => onUpdateMemory(memory.id, { source: 'user_edited' })}
               >
-                <Text style={styles.secondaryButtonText}>Mark Reviewed</Text>
+                <Text style={styles.secondaryButtonText}>标记已审阅</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -169,6 +179,22 @@ const styles = {
     padding: 16,
     paddingBottom: 40,
   },
+  hero: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.text1,
+    marginBottom: 8,
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    color: COLORS.text2,
+    lineHeight: 20,
+  },
   card: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -181,6 +207,12 @@ const styles = {
     color: COLORS.text1,
     fontSize: 18,
     fontWeight: '800',
+    marginBottom: 4,
+  },
+  cardDesc: {
+    color: COLORS.text2,
+    fontSize: 13,
+    lineHeight: 18,
     marginBottom: 12,
   },
   input: {

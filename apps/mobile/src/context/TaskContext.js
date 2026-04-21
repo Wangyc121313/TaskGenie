@@ -33,7 +33,7 @@ export const useTask = () => {
 
 export const TaskProvider = ({ children }) => {
   // 改为数组，支持多选标签
-  const [selectedTags, setSelectedTags] = useState(['今日']); // 默认选中今日
+  const [selectedTags, setSelectedTags] = useState([]); // 默认不筛选，显示全部任务
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState(null);

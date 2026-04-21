@@ -10,6 +10,8 @@ from app.db.database import db
 from app.models import (
     AIDayScheduleRequest,
     AIImageTaskRequest,
+    AITranscribeRequest,
+    AITranscribeResponse,
     AIJob,
     AIJobStatus,
     AITaskRequest,
@@ -281,8 +283,58 @@ async def _run_image_planning_sync(request: AIImageTaskRequest):
     }
 
 
-def _decode_and_validate_image(*, image_base64: str, content_type: str | None) -> bytes:
+@ai_router.post("/transcribe", response_model=AITranscribeResponse)
+async def transcribe_audio(request: AITranscribeRequest):
+    """
+    Transcribe base64-encoded audio using Whisper.
+
+    The client should send the raw audio bytes (e.g. from a microphone recording)
+    encoded as base64.  Supported formats: m4a, mp3, wav, webm, ogg.
+    Returns the transcript text and detected language.
+    """
     try:
+        audio_bytes = base64.b64decode(request.audio_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid base64 audio payload.") from exc
+
+    # Determine file extension from mime type for the Whisper API file tuple
+    _MIME_TO_EXT = {
+        "audio/m4a": "m4a",
+        "audio/mp4": "m4a",
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+        "audio/wav": "wav",
+        "audio/x-wav": "wav",
+        "audio/webm": "webm",
+        "audio/ogg": "ogg",
+        "audio/flac": "flac",
+    }
+    ext = _MIME_TO_EXT.get(request.audio_mime_type.lower(), "m4a")
+    filename = f"recording.{ext}"
+
+    from app.services.llm_service import LLMService  # noqa: PLC0415
+    import io  # noqa: PLC0415
+
+    try:
+        transcription = LLMService._client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(filename, io.BytesIO(audio_bytes), request.audio_mime_type),
+            language=request.language,
+            response_format="verbose_json",
+        )
+        return AITranscribeResponse(
+            transcript=transcription.text.strip(),
+            language=getattr(transcription, "language", None),
+            duration_seconds=getattr(transcription, "duration", None),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Speech-to-text transcription failed: {exc}",
+        ) from exc
+
+
+def _decode_and_validate_image(*, image_base64: str, content_type: str | None) -> bytes:    try:
         image_bytes = base64.b64decode(image_base64, validate=True)
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid base64 image payload.") from exc
