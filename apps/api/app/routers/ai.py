@@ -334,7 +334,8 @@ async def transcribe_audio(request: AITranscribeRequest):
         ) from exc
 
 
-def _decode_and_validate_image(*, image_base64: str, content_type: str | None) -> bytes:    try:
+def _decode_and_validate_image(*, image_base64: str, content_type: str | None) -> bytes:
+    try:
         image_bytes = base64.b64decode(image_base64, validate=True)
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid base64 image payload.") from exc

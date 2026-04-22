@@ -20,7 +20,6 @@ from app.models.schemas import (
 )
 from app.agent.planner import AgentPlanner
 from app.services.ai_service import AIService
-from app.services.llm_service import LLMService
 
 
 client = TestClient(app)
@@ -428,7 +427,10 @@ class TestTaskGenieAPI:
         assert preferences["preferred_task_duration_hours"] == 1.7
 
     def test_ai_image_task_preview_returns_candidates(self, monkeypatch):
-        def mock_multimodal_output(**_kwargs):
+        def mock_image_transcription(**_kwargs):
+            return "Sprint board: API integration checklist; mobile UI blockers."
+
+        def mock_transcription_task_output(**_kwargs):
             return ImageTaskExtractionResult(
                 scene_summary="A handwritten whiteboard with sprint tasks.",
                 detected_context="Sprint Planning",
@@ -453,7 +455,8 @@ class TestTaskGenieAPI:
                 warnings=["One note in the corner is partially obscured."],
             )
 
-        monkeypatch.setattr(LLMService, "generate_multimodal_structured_output", mock_multimodal_output)
+        monkeypatch.setattr(AgentPlanner, "transcribe_image_to_text", mock_image_transcription)
+        monkeypatch.setattr(AgentPlanner, "extract_tasks_from_transcription", mock_transcription_task_output)
         encoded_image = base64.b64encode(b"fake-image-bytes").decode("utf-8")
 
         response = client.post(
@@ -478,7 +481,10 @@ class TestTaskGenieAPI:
         assert len(data["trace"]["extracted_candidates"]) == 2
 
     def test_ai_image_task_auto_create_executes_tasks(self, monkeypatch):
-        def mock_multimodal_output(**_kwargs):
+        def mock_image_transcription(**_kwargs):
+            return "Meeting notes screenshot: prepare release notes."
+
+        def mock_transcription_task_output(**_kwargs):
             return ImageTaskExtractionResult(
                 scene_summary="A screenshot of a meeting notes app.",
                 detected_context="Release Prep",
@@ -494,7 +500,8 @@ class TestTaskGenieAPI:
                 ],
             )
 
-        monkeypatch.setattr(LLMService, "generate_multimodal_structured_output", mock_multimodal_output)
+        monkeypatch.setattr(AgentPlanner, "transcribe_image_to_text", mock_image_transcription)
+        monkeypatch.setattr(AgentPlanner, "extract_tasks_from_transcription", mock_transcription_task_output)
         encoded_image = base64.b64encode(b"fake-image-bytes").decode("utf-8")
 
         response = client.post(
@@ -915,7 +922,10 @@ class TestTaskGenieAPI:
                 completion_message="Conversation seed created.",
             )
 
-        def mock_extract_image_tasks(**kwargs):
+        def mock_image_transcription(**_kwargs):
+            return "Launch board screenshot: launch blockers."
+
+        def mock_extract_tasks_from_transcription(**kwargs):
             image_planning_contexts.append(kwargs["planning_context"])
             return ImageTaskExtractionResult(
                 scene_summary="A screenshot with launch todos.",
@@ -933,7 +943,8 @@ class TestTaskGenieAPI:
             )
 
         monkeypatch.setattr(AgentPlanner, "plan_text_goal_step", mock_plan_text_goal_step)
-        monkeypatch.setattr(AgentPlanner, "extract_image_tasks", mock_extract_image_tasks)
+        monkeypatch.setattr(AgentPlanner, "transcribe_image_to_text", mock_image_transcription)
+        monkeypatch.setattr(AgentPlanner, "extract_tasks_from_transcription", mock_extract_tasks_from_transcription)
 
         first_response = client.post(
             "/ai/agent/run",
