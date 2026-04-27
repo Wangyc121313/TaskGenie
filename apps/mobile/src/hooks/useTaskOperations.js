@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { API_URL } from '../context/TaskContext';
+import { apiFetch } from '../utils/api';
 
 
 export const useTaskOperations = () => {
@@ -12,11 +12,12 @@ export const useTaskOperations = () => {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/tasks`);
-      const data = await response.json();
-      setTasks(data);
+      const { ok, data } = await apiFetch('/tasks');
+      if (ok) {
+        setTasks(data);
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load tasks.');
+      Alert.alert('错误', '加载任务失败。');
       console.error(error);
     }
   }, []);
@@ -24,17 +25,13 @@ export const useTaskOperations = () => {
   const createTask = async (taskData, options = {}) => {
     const { refresh = true, showAlert = false } = options;
     try {
-      const response = await fetch(`${API_URL}/tasks`, {
+      const { ok, data } = await apiFetch('/tasks', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(taskData),
+        body: taskData,
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        Alert.alert('错误', errData.detail || '创建任务失败，请检查输入并重试');
+      if (!ok) {
+        Alert.alert('错误', data.detail || '创建任务失败，请检查输入并重试');
         return false;
       }
 
@@ -86,15 +83,12 @@ export const useTaskOperations = () => {
         ? { completed: updateData.completed }
         : updateData;
 
-      const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+      const { ok } = await apiFetch(`/tasks/${taskId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: payload,
       });
 
-      if (!response.ok) {
+      if (!ok) {
         Alert.alert('错误', '更新任务失败，请重试。');
         return false;
       }
@@ -110,17 +104,12 @@ export const useTaskOperations = () => {
 
   const toggleTaskCompletion = async (taskId, currentCompleted) => {
     try {
-      const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+      const { ok } = await apiFetch(`/tasks/${taskId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          completed: !currentCompleted,
-        }),
+        body: { completed: !currentCompleted },
       });
 
-      if (!response.ok) {
+      if (!ok) {
         return false;
       }
 
@@ -153,11 +142,8 @@ export const useTaskOperations = () => {
         style: 'destructive',
         onPress: async () => {
           try {
-            const response = await fetch(`${API_URL}/tasks/${taskId}`, {
-              method: 'DELETE',
-            });
-
-            if (response.ok) {
+            const { ok } = await apiFetch(`/tasks/${taskId}`, { method: 'DELETE' });
+            if (ok) {
               await fetchTasks();
             }
           } catch (error) {
@@ -173,29 +159,23 @@ export const useTaskOperations = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/ai/plan-tasks/async`, {
+      const { ok, data } = await apiFetch('/ai/agent/run', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt,
+        body: {
+          mode: 'text_goal',
+          goal: prompt,
           max_tasks: maxTasks,
-        }),
+          auto_execute: true,
+        },
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        Alert.alert('错误', error.detail || 'AI 规划失败，请重试。');
+      if (!ok) {
+        Alert.alert('错误', data.detail || 'AI 规划失败，请重试。');
         return;
       }
 
-      const data = await response.json();
+      // Agent run returns job_id for async polling
       setAiJobId(data.job_id);
-      Alert.alert(
-        'AI 规划中',
-        `AI 正在为你生成最多 ${maxTasks} 个任务，请稍候。`,
-      );
     } catch (error) {
       Alert.alert('错误', 'AI 规划失败，请确认 API 已启动。');
       console.error(error);
@@ -214,23 +194,19 @@ export const useTaskOperations = () => {
     setImagePlanningLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/ai/plan-image/sync`, {
+      const { ok, data } = await apiFetch('/ai/plan-image/async', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        body: {
           image_base64: imageBase64,
           image_mime_type: imageMimeType,
           filename,
           notes,
           max_tasks: maxTasks,
           auto_create: false,
-        }),
+        },
       });
 
-      const data = await response.json();
-      if (!response.ok || !data.success) {
+      if (!ok) {
         Alert.alert('错误', data.error || data.detail || '图片解析失败，请重试。');
         return null;
       }
@@ -256,8 +232,15 @@ export const useTaskOperations = () => {
     const timer = setInterval(async () => {
       attempts += 1;
       try {
-        const response = await fetch(`${API_URL}/ai/jobs/${aiJobId}`);
-        const job = await response.json();
+        const { ok, data: job } = await apiFetch(`/ai/agent/runs/${aiJobId}`);
+
+        if (!ok) {
+          if (attempts >= MAX_ATTEMPTS) {
+            setAiJobId(null);
+            Alert.alert('连接失败', '无法检查 AI 任务状态，请确认 API 已启动。');
+          }
+          return;
+        }
 
         if (job.status === 'completed') {
           setAiJobId(null);

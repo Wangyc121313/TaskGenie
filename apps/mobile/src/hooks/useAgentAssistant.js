@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { API_URL } from '../context/TaskContext';
+import { apiFetch } from '../utils/api';
 
 
 export const useAgentAssistant = ({ onTasksChanged } = {}) => {
@@ -18,15 +18,11 @@ export const useAgentAssistant = ({ onTasksChanged } = {}) => {
   const runAgent = useCallback(async payload => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/ai/agent/run`, {
+      const { ok, data } = await apiFetch('/ai/agent/run', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: payload,
       });
-      const data = await response.json();
-      if (!response.ok) {
+      if (!ok) {
         Alert.alert('Agent Error', data.detail || data.error || 'Failed to run agent.');
         return null;
       }
@@ -46,11 +42,10 @@ export const useAgentAssistant = ({ onTasksChanged } = {}) => {
   const confirmRun = useCallback(async jobId => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/ai/agent/runs/${jobId}/confirm`, {
+      const { ok, data } = await apiFetch(`/ai/agent/runs/${jobId}/confirm`, {
         method: 'POST',
       });
-      const data = await response.json();
-      if (!response.ok) {
+      if (!ok) {
         Alert.alert('Agent Error', data.detail || data.error || 'Failed to confirm agent run.');
         return null;
       }

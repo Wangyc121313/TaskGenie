@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { API_URL } from '../context/TaskContext';
+import { apiFetch } from '../utils/api';
 
 
 const DEFAULT_PREFERENCES = {
@@ -26,18 +26,16 @@ export const useProfileData = () => {
   const fetchProfile = useCallback(async () => {
     setLoading(true);
     try {
-      const [preferencesResponse, memoriesResponse] = await Promise.all([
-        fetch(`${API_URL}/profile/preferences`),
-        fetch(`${API_URL}/profile/memories`),
+      const [preferencesResult, memoriesResult] = await Promise.all([
+        apiFetch('/profile/preferences'),
+        apiFetch('/profile/memories'),
       ]);
-      const preferencesData = await preferencesResponse.json();
-      const memoriesData = await memoriesResponse.json();
 
-      if (preferencesResponse.ok) {
-        setPreferences(preferencesData);
+      if (preferencesResult.ok) {
+        setPreferences(preferencesResult.data);
       }
-      if (memoriesResponse.ok) {
-        setMemories(memoriesData);
+      if (memoriesResult.ok) {
+        setMemories(memoriesResult.data);
       }
     } catch (error) {
       console.error(error);
@@ -53,15 +51,11 @@ export const useProfileData = () => {
 
   const updatePreferences = useCallback(async payload => {
     try {
-      const response = await fetch(`${API_URL}/profile/preferences`, {
+      const { ok, data } = await apiFetch('/profile/preferences', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: payload,
       });
-      const data = await response.json();
-      if (!response.ok) {
+      if (!ok) {
         Alert.alert('Profile Error', data.detail || 'Failed to update preferences.');
         return null;
       }
@@ -76,15 +70,11 @@ export const useProfileData = () => {
 
   const createMemory = useCallback(async payload => {
     try {
-      const response = await fetch(`${API_URL}/profile/memories`, {
+      const { ok, data } = await apiFetch('/profile/memories', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: payload,
       });
-      const data = await response.json();
-      if (!response.ok) {
+      if (!ok) {
         Alert.alert('Profile Error', data.detail || 'Failed to create memory.');
         return null;
       }
@@ -99,15 +89,11 @@ export const useProfileData = () => {
 
   const updateMemory = useCallback(async (memoryId, payload) => {
     try {
-      const response = await fetch(`${API_URL}/profile/memories/${memoryId}`, {
+      const { ok, data } = await apiFetch(`/profile/memories/${memoryId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: payload,
       });
-      const data = await response.json();
-      if (!response.ok) {
+      if (!ok) {
         Alert.alert('Profile Error', data.detail || 'Failed to update memory.');
         return null;
       }
@@ -124,11 +110,10 @@ export const useProfileData = () => {
 
   const deleteMemory = useCallback(async memoryId => {
     try {
-      const response = await fetch(`${API_URL}/profile/memories/${memoryId}`, {
+      const { ok, data } = await apiFetch(`/profile/memories/${memoryId}`, {
         method: 'DELETE',
       });
-      if (!response.ok) {
-        const data = await response.json();
+      if (!ok) {
         Alert.alert('Profile Error', data.detail || 'Failed to delete memory.');
         return false;
       }

@@ -17,9 +17,8 @@ export const TAG_COLORS = {
   '已过期': '#e67e22',
 };
 
-// API 配置
-export const API_URL = 'http://10.0.2.2:8000'; // Android 模拟器使用
-// export const API_URL = 'http://localhost:8000'; // iOS 模拟器使用
+// API 配置统一由 src/utils/config.js 管理；此处重新导出以保持向后兼容
+export { API_URL } from '../utils/config';
 
 const TaskContext = createContext();
 

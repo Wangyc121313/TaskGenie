@@ -14,7 +14,6 @@ from app.models import (
     AITranscribeResponse,
     AIJob,
     AIJobStatus,
-    AITaskRequest,
     AgentRunRequest,
     ConversationSession,
     ToolDefinitionSchema,
@@ -87,23 +86,6 @@ async def call_mcp_tool(request: MCPToolCallRequest):
             structuredContent={"tool": request.name, "error": str(exc)},
             isError=True,
         )
-
-
-@ai_router.post("/plan-tasks/async")
-async def ai_plan_tasks_async(request: AITaskRequest, background_tasks: BackgroundTasks):
-    job_id = str(uuid4())
-    job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
-    db.create_ai_job(job)
-
-    max_tasks = max(1, min(10, request.max_tasks))
-    background_tasks.add_task(AIService.process_task_planning, job_id, request.prompt, max_tasks)
-
-    return {
-        "job_id": job_id,
-        "status": "processing",
-        "max_tasks": max_tasks,
-        "message": f"Planning {max_tasks} tasks from the provided goal.",
-    }
 
 
 @ai_router.post("/plan-image/async")

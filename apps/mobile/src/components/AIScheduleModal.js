@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -9,95 +9,71 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import { API_URL, TAG_COLORS } from '../context/TaskContext';
+import { TAG_COLORS } from '../context/TaskContext';
+import { apiFetch } from '../utils/api';
+import { useAgentJob } from '../hooks/useAgentJob';
 
 const { height: screenHeight } = Dimensions.get('window');
 
 const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegenerate = false }) => {
   const [loading, setLoading] = useState(false);
-  const [aiJobId, setAiJobId] = useState(null);
   const [scheduleResult, setScheduleResult] = useState(null);
   const [dayPreview, setDayPreview] = useState(null);
+
+  const handleJobComplete = useCallback((job) => {
+    const schedule =
+      job.result?.final_result?.schedule ||
+      job.result?.artifacts?.schedule ||
+      null;
+    if (schedule) {
+      setScheduleResult({ schedule });
+    }
+    if (onRefresh) {
+      onRefresh();
+    }
+  }, [onRefresh]);
+
+  const { running: agentRunning, start: startAgentJob } = useAgentJob({
+    onComplete: handleJobComplete,
+  });
 
   useEffect(() => {
     if (visible && selectedDate) {
       fetchDayPreview();
       setScheduleResult(null);
-      setAiJobId(null);
     }
   }, [visible, selectedDate]);
 
-  // 获取日期预览信息
+  // 获取日期预览信息 + 加载已保存的日程
   const fetchDayPreview = async () => {
     try {
-      const response = await fetch(`${API_URL}/ai/schedule-day/${selectedDate.date}`);
-      const data = await response.json();
-      setDayPreview(data);
+      const [previewResult, scheduleResult_] = await Promise.all([
+        apiFetch(`/ai/schedule-day/${selectedDate.date}`),
+        apiFetch(`/ai/schedule/${selectedDate.date}`),
+      ]);
+      if (previewResult.ok) {
+        setDayPreview(previewResult.data);
+      }
+      // 若已有保存的日程，直接展示
+      if (scheduleResult_.ok && scheduleResult_.data?.has_schedule) {
+        setScheduleResult({ schedule: scheduleResult_.data.schedule });
+      }
     } catch (error) {
       console.error('获取日期预览失败', error);
     }
   };
 
-  // 开始AI安排
+  // 开始AI安排 — 通过 useAgentJob 统一处理
   const handleStartSchedule = async () => {
     setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/ai/schedule-day/async?force_regenerate=${forceRegenerate}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: selectedDate.date,
-          task_ids: null // 安排所有任务
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAiJobId(data.job_id);
-        // 移除了 Alert.alert('处理中', 'AI 正在为您安排日程，请稍候...');
-        console.log('🤖 AI日程安排已启动:', data.job_id); // 改为控制台日志
-      } else {
-        const error = await response.json();
-        Alert.alert('错误', error.detail || 'AI 处理失败');
-      }
-    } catch (error) {
-      Alert.alert('错误', 'AI 安排失败，请检查网络连接');
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    await startAgentJob({
+      mode: 'schedule_day',
+      date: selectedDate.date,
+      task_ids: null,
+      force_regenerate: forceRegenerate,
+    });
+    setLoading(false);
   };
-
-  // 检查AI任务状态 - 移除完成弹窗
-  useEffect(() => {
-    if (aiJobId) {
-      const checkJobStatus = setInterval(async () => {
-        try {
-          const response = await fetch(`${API_URL}/ai/jobs/${aiJobId}`);
-          const job = await response.json();
-          
-          if (job.status === 'completed') {
-            setAiJobId(null);
-            setScheduleResult(job.result);
-            if (onRefresh) {
-              onRefresh(); // 刷新父组件的数据
-            }
-            // 移除了 Alert.alert('成功', 'AI 已为您安排好日程');
-            console.log('✅ AI日程安排完成'); // 改为控制台日志
-          } else if (job.status === 'failed') {
-            setAiJobId(null);
-            Alert.alert('错误', job.error || 'AI 处理失败');
-          }
-        } catch (error) {
-          console.error('检查任务状态失败', error);
-        }
-      }, 2000);
-
-      return () => clearInterval(checkJobStatus);
-    }
-  }, [aiJobId]);
 
   const getPriorityColor = (priority) => {
     const colors = {
@@ -438,11 +414,11 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
                   </View>
                 )}
 
-                {!scheduleResult && !aiJobId ? (
+                {!scheduleResult && !agentRunning ? (
                   <TouchableOpacity
-                    style={[styles.startButton, (loading || aiJobId) && styles.disabledButton]}
+                    style={[styles.startButton, (loading || agentRunning) && styles.disabledButton]}
                     onPress={handleStartSchedule}
-                    disabled={loading || !!aiJobId || !dayPreview || dayPreview.task_count === 0}
+                    disabled={loading || agentRunning || !dayPreview || dayPreview.task_count === 0}
                   >
                     {loading ? (
                       <View style={styles.startButtonContent}>
@@ -453,7 +429,7 @@ const AIScheduleModal = ({ visible, onClose, selectedDate, onRefresh, forceRegen
                       <Text style={styles.startButtonText}>🤖 开始 AI 安排</Text>
                     )}
                   </TouchableOpacity>
-                ) : aiJobId && !scheduleResult ? (
+                ) : agentRunning && !scheduleResult ? (
                   // 处理中状态显示
                   <View style={styles.processingContainer}>
                     <ActivityIndicator size="large" color="#6366F1" />

@@ -51,7 +51,7 @@
 | `POST` | `/ai/agent/runs/{job_id}/confirm` | 确认高影响操作后继续执行 | — | `AgentRunResponse` |
 | `GET` | `/ai/agent/tools` | 列出所有注册工具 | — | `ToolDefinitionSchema[]` |
 | `GET` | `/ai/conversations/{conversation_id}` | 获取会话历史 | — | `ConversationSession` |
-| `POST` | `/ai/plan-tasks/async` | 旧版异步任务规划（legacy，待清理） | `AITaskRequest` | `{job_id}` |
+| `POST` | `/ai/transcribe` | 音频 Base64 → 文字（Whisper） | `AITranscribeRequest` | `AITranscribeResponse` |
 
 `AgentRunRequest` 的 `mode` 字段决定 Runtime 走哪条执行分支：
 
@@ -59,7 +59,7 @@
 |------|----------|----------|
 | `text_goal` | 用户输入自然语言目标 | `PlannedTask[]` → 写入 DB |
 | `image_goal` | 用户上传图片/截图 | `ImageTaskCandidate[]` → 用户确认后写入 DB |
-| `schedule_day` | 用户请求某天日程安排 | `DaySchedule` → 前端展示 |
+| `schedule_day` | 用户请求某天日程安排 | `DaySchedule` → 持久化到 DB + 前端展示 |
 
 ---
 
@@ -181,8 +181,11 @@ AIJob
        ▼
 [AgentRuntime._run_image_goal()]
        │
-       ├─ AgentPlanner.extract_image_tasks()
-       │     └─ 调用 LLM (vision) → ImageTaskExtractionResult
+       ├─ Stage 1: AgentPlanner.transcribe_image_to_text()
+       │     └─ 视觉模型仅做内容提取（文字原样转录 / 图表结构描述）
+       │
+       ├─ Stage 2: AgentPlanner.extract_tasks_from_transcription()
+       │     └─ 文本 LLM 根据转录内容规划任务 → ImageTaskExtractionResult
        │          (scene_summary, tasks: ImageTaskCandidate[])
        │
        └─ 返回候选列表（此阶段不写 DB）
@@ -213,7 +216,8 @@ AIJob
        │           efficiency_score, suggestions[])
        │
        └─ 返回 schedule 供前端展示
-          ⚠️ 当前日程结果仅展示，不持久化到 DB
+          schedule 在生成时由 Runtime 自动写入 DB（db.create_day_schedule）
+          再次打开同一日期的 Modal 时直接加载已保存结果
 ```
 
 ---
@@ -224,10 +228,16 @@ AIJob
 App.tsx
 ├── TaskProvider  (Context: selectedTags, modal 状态)
 │
+├── Utils  (src/utils/)
+│   ├── config.js            API_URL 配置（单一配置点，Platform 自动选择）
+│   └── api.js               apiFetch 统一请求层（URL 注入 + JSON headers）
+│
 ├── Hooks  (业务逻辑层，唯一与 API 通信的位置)
 │   ├── useTaskOperations    → /tasks 系列接口
-│   ├── useAgentAssistant    → /ai/agent/run, /confirm
+│   ├── useAgentAssistant    → /ai/agent/run, /confirm（文本/图片规划）
+│   ├── useAgentJob          → 通用 Agent job 启动 + 轮询（供 Modals 直接使用）
 │   ├── useProfileData       → /profile 系列接口
+│   ├── useVoiceInput        → @react-native-voice/voice 语音输入封装
 │   └── usePullDownSearch    → 搜索过滤（本地）
 │
 ├── Tabs  (页面视图)
@@ -237,9 +247,9 @@ App.tsx
 │   └── ProfileTab           ← useProfileData
 │
 └── Modals  (弹层，触发 AI 流程或手动 CRUD)
-    ├── AIPlanningModal      → mode: text_goal
-    ├── AIImagePlanningModal → mode: image_goal
-    ├── AIScheduleModal      → mode: schedule_day
+    ├── AIPlanningModal      → mode: text_goal（含语音输入）
+    ├── AIImagePlanningModal → mode: image_goal（两阶段：视觉转录 + 文本规划）
+    ├── AIScheduleModal      → mode: schedule_day（使用 useAgentJob）
     └── TaskModal            → 手动创建/编辑任务
 ```
 
@@ -251,9 +261,11 @@ App.tsx
 AgentRuntime  (生命周期协调器)
 │
 ├── AgentPlanner        与 LLM 通信，生成结构化计划产物
-│   ├── plan_text_goal()          → AgentTaskPlanResult
-│   ├── extract_image_tasks()     → ImageTaskExtractionResult
-│   └── plan_day_schedule()       → DayScheduleGenerationResult
+│   ├── plan_text_goal()                    → AgentTaskPlanResult
+│   ├── transcribe_image_to_text()          → str（视觉模型转录，不做推理）
+│   ├── extract_tasks_from_transcription()  → ImageTaskExtractionResult（文本 LLM 规划）
+│   ├── extract_image_tasks()               → ImageTaskExtractionResult（直接视觉路径，可选用）
+│   └── plan_day_schedule()                 → DayScheduleGenerationResult
 │
 ├── policy              判断是否需要人工确认
 │   └── should_require_confirmation(tool_calls, auto_execute)
@@ -290,11 +302,13 @@ Runtime 模块与 LangGraph 节点概念的对应关系（为未来迁移保留�
 
 ## 七、当前已知的结构性缺口
 
-| 问题 | 位置 | 影响 |
+> 以下缺口已于 2026-04-27 本次迭代中全部修复。
+
+| 问题 | 位置 | 状态 |
 |------|------|------|
-| `API_URL` 硬编码在 Context 里 | `src/context/TaskContext.js` | 换环境（真机/模拟器/生产）需手改代码 |
-| 旧版 `/ai/plan-tasks/async` 与新 Agent 并存 | `routers/ai.py` | 两套入口语义重叠，容易混淆 |
-| 前端无统一 API 层，`fetch` 散落在各 Hook | `src/hooks/` | 接口路径或结构变更时需改多处 |
-| Agent mode 入口分散于多个独立 Modal | `src/components/` | 新增 mode 或修改公共逻辑时需改多处 |
-| `schedule_day` 结果只展示、不持久化 | `AIScheduleModal.js` | 弹层关闭后日程数据丢失 |
-| 旧版 async job 缺少 polling 逻辑 | `src/hooks/` | legacy async job 拿不到最终执行结果 |
+| `API_URL` 硬编码在 Context 里 | `src/context/TaskContext.js` | ✅ 已迁移至 `src/utils/config.js`，Platform 自动选择，TaskContext 保留向后兼容导出 |
+| 旧版 `/ai/plan-tasks/async` 与新 Agent 并存 | `routers/ai.py` | ✅ 旧版端点已删除；`aiPlanTasks` 改走 `POST /ai/agent/run (text_goal)` |
+| 前端无统一 API 层，`fetch` 散落在各 Hook | `src/hooks/` | ✅ 新增 `src/utils/api.js` (`apiFetch`)；全部 Hook 和 AIScheduleModal 已切换 |
+| Agent mode 入口分散于多个独立 Modal | `src/components/` | ✅ 新增 `useAgentJob` Hook 统一封装 Agent 启动 + 轮询；AIScheduleModal 已使用 |
+| `schedule_day` 结果只展示、不持久化 | `AIScheduleModal.js` | ✅ 后端 Runtime 本已写 DB；前端 `fetchDayPreview` 现在同时调用 `GET /ai/schedule/{date}` 并展示已保存日程 |
+| 旧版 async job 缺少 polling 逻辑 | `src/hooks/` | ✅ `aiPlanTasks` 已改走 Agent endpoint，polling 指向 `GET /ai/agent/runs/{job_id}` |
