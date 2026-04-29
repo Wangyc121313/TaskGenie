@@ -1,8 +1,9 @@
+import asyncio
 import base64
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from app.agent.runtime import AgentRuntime
 from app.core.config import current_settings
@@ -10,6 +11,7 @@ from app.db.database import db
 from app.models import (
     AIDayScheduleRequest,
     AIImageTaskRequest,
+    AITaskRequest,
     AITranscribeRequest,
     AITranscribeResponse,
     AIJob,
@@ -88,8 +90,25 @@ async def call_mcp_tool(request: MCPToolCallRequest):
         )
 
 
+@ai_router.post("/plan-tasks/async")
+async def ai_plan_tasks_async(request: AITaskRequest):
+    job_id = str(uuid4())
+    job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
+    db.create_ai_job(job)
+
+    max_tasks = max(1, min(10, request.max_tasks))
+    asyncio.create_task(AIService.process_task_planning(job_id, request.prompt, max_tasks))
+
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "max_tasks": max_tasks,
+        "message": f"Planning {max_tasks} tasks from the provided goal.",
+    }
+
+
 @ai_router.post("/plan-image/async")
-async def ai_plan_image_async(background_tasks: BackgroundTasks, request: AIImageTaskRequest):
+async def ai_plan_image_async(request: AIImageTaskRequest):
     image_bytes = _decode_and_validate_image(
         image_base64=request.image_base64,
         content_type=request.image_mime_type,
@@ -99,16 +118,17 @@ async def ai_plan_image_async(background_tasks: BackgroundTasks, request: AIImag
     job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
     db.create_ai_job(job)
 
-    background_tasks.add_task(
-        AIService.process_image_task_planning,
-        job_id,
-        image_bytes=image_bytes,
-        image_mime_type=request.image_mime_type,
-        filename=request.filename or "upload-image",
-        notes=request.notes,
-        conversation_id=request.conversation_id,
-        max_tasks=max(0, min(10, request.max_tasks)),
-        auto_create=request.auto_create,
+    asyncio.create_task(
+        AIService.process_image_task_planning(
+            job_id,
+            image_bytes=image_bytes,
+            image_mime_type=request.image_mime_type,
+            filename=request.filename or "upload-image",
+            notes=request.notes,
+            conversation_id=request.conversation_id,
+            max_tasks=max(0, min(10, request.max_tasks)),
+            auto_create=request.auto_create,
+        )
     )
     return {
         "job_id": job_id,
@@ -130,19 +150,19 @@ async def get_ai_job_status(job_id: str):
 @ai_router.post("/schedule-day/async")
 async def ai_schedule_day_async(
     request: AIDayScheduleRequest,
-    background_tasks: BackgroundTasks,
     force_regenerate: bool = False,
 ):
     job_id = str(uuid4())
     job = AIJob(job_id=job_id, status=AIJobStatus.PENDING, created_at=datetime.now())
     db.create_ai_job(job)
-    background_tasks.add_task(
-        AIService.process_day_schedule,
-        job_id,
-        request.date,
-        request.task_ids,
-        force_regenerate,
-        request.conversation_id,
+    asyncio.create_task(
+        AIService.process_day_schedule(
+            job_id,
+            request.date,
+            request.task_ids,
+            force_regenerate,
+            request.conversation_id,
+        )
     )
     return {"job_id": job_id, "status": "processing"}
 
